@@ -72,6 +72,7 @@ async function startServer() {
   app.use("/api/trpc/adminAuth", authLimiter);
   app.use("/api/trpc/users", authLimiter);
   app.use("/api/trpc/suppliers", authLimiter);
+  app.use("/api/trpc/distributors", authLimiter);
   app.use("/api/trpc/distributorsAdmin", authLimiter);
 
   // Apply upload rate limiting
@@ -152,9 +153,10 @@ async function startServer() {
         adminToken:
           (req.cookies?.adminSession as string | undefined) ??
           (req.headers["x-admin-token"] as string | undefined),
-        // User and supplier: httpOnly cookies only (Batch 2 auth hardening)
+        // User, supplier, distributor: httpOnly cookies only (Batch 2/3 auth hardening)
         userToken: req.cookies?.userSession as string | undefined,
         supplierToken: req.cookies?.supplierSession as string | undefined,
+        distributorToken: req.cookies?.distributorSession as string | undefined,
         req,
         res,
       }),

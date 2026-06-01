@@ -13,6 +13,7 @@ export interface Context {
   supplierToken?: string;
   adminToken?: string;
   userToken?: string;
+  distributorToken?: string;
   req?: Request;
   res?: Response;
 }
@@ -123,6 +124,31 @@ export const supplierProcedure = t.procedure.use(async ({ ctx, next }) => {
   });
   if (!supplier) throw new TRPCError({ code: "UNAUTHORIZED" });
   return next({ ctx: { ...ctx, supplier } });
+});
+
+// ── Distributor procedure (cookie-based, Batch 3) ─────────────────────────────
+export const distributorProcedure = t.procedure.use(async ({ ctx, next }) => {
+  validateRequestOrigin(ctx.req);
+  const token = ctx.distributorToken;
+  if (!token)
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "يرجى تسجيل الدخول" });
+  const now = Date.now();
+  const session = await db.query.distributorSessions.findFirst({
+    where: and(
+      eq(schema.distributorSessions.token, token),
+      gt(schema.distributorSessions.expiresAt, now)
+    ),
+  });
+  if (!session)
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "انتهت صلاحية الجلسة",
+    });
+  const distributor = await db.query.distributors.findFirst({
+    where: eq(schema.distributors.id, session.distributorId),
+  });
+  if (!distributor) throw new TRPCError({ code: "UNAUTHORIZED" });
+  return next({ ctx: { ...ctx, distributor } });
 });
 
 export { t };

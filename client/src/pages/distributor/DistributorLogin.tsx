@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useDistributorAuth } from "@/contexts/DistributorAuthContext";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,8 +21,18 @@ export default function DistributorLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const { dir } = useLanguage();
+
+  const loginMutation = trpc.distributors.login.useMutation({
+    onSuccess: (data) => {
+      login(data.distributor as any);
+      toast.success(dir === "rtl" ? "مرحباً بك في بوابة الموزعين!" : "Welcome to the Distributor Portal!");
+      navigate("/distributor/dashboard");
+    },
+    onError: (error) => {
+      toast.error(error.message || (dir === "rtl" ? "البريد الإلكتروني أو كلمة المرور غير صحيحة" : "Incorrect email or password"));
+    },
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,16 +40,7 @@ export default function DistributorLogin() {
       toast.error(dir === "rtl" ? "يرجى إدخال البريد الإلكتروني وكلمة المرور" : "Please enter your email and password");
       return;
     }
-    setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    const success = login(email, password);
-    setIsLoading(false);
-    if (success) {
-      toast.success(dir === "rtl" ? "مرحباً بك في بوابة الموزعين!" : "Welcome to the Distributor Portal!");
-      navigate("/distributor/dashboard");
-    } else {
-      toast.error(dir === "rtl" ? "البريد الإلكتروني أو كلمة المرور غير صحيحة" : "Incorrect email or password");
-    }
+    loginMutation.mutate({ email, password });
   };
 
   const features = dir === "rtl" ? [
@@ -236,9 +238,9 @@ export default function DistributorLogin() {
               type="submit"
               className="w-full h-11 text-base font-medium transition-all"
               style={{ background: "oklch(0.38 0.06 160)", color: "white", fontFamily: "IBM Plex Sans Arabic, sans-serif" }}
-              disabled={isLoading}
+              disabled={loginMutation.isPending}
             >
-              {isLoading ? (
+              {loginMutation.isPending ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   {dir === "rtl" ? "جاري تسجيل الدخول..." : "Signing in..."}

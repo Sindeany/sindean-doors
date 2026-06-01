@@ -1,15 +1,17 @@
 // ============================================================
 // Distributor Auth Context - Sindian Doors
-// Simulates login/logout state for the distributor portal
+// Batch 3-b: استبدال mock auth بمصادقة حقيقية (httpOnly cookies + tRPC)
 // ============================================================
 
 import { createContext, useContext, useState, ReactNode } from "react";
-import { mockDistributor, DistributorProfile } from "@/lib/distributorData";
+import { DistributorProfile } from "@/lib/distributorData";
+import { trpc } from "@/lib/trpc";
 
 interface DistributorAuthContextType {
   distributor: DistributorProfile | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => boolean;
+  isLoading: boolean;
+  login: (distributor: DistributorProfile) => void;
   logout: () => void;
 }
 
@@ -18,22 +20,30 @@ const DistributorAuthContext = createContext<DistributorAuthContextType | null>(
 export function DistributorAuthProvider({ children }: { children: ReactNode }) {
   const [distributor, setDistributor] = useState<DistributorProfile | null>(null);
 
-  const login = (email: string, _password: string): boolean => {
-    // Demo: accept any email that contains "@" with any password
-    if (email.includes("@")) {
-      setDistributor(mockDistributor);
-      return true;
-    }
-    return false;
+  // استعادة الجلسة عند تحميل الصفحة عبر httpOnly cookie
+  const { isLoading } = trpc.distributors.me.useQuery(undefined, {
+    retry: false,
+    // as any: onSuccess/onError ليسا في النوع الرسمي لـ useQuery في tRPC v11
+    // لكنهما مدعومان في TanStack Query v5 الذي يُشغّله tRPC
+    onSuccess: (data: any) => setDistributor(data as DistributorProfile),
+    onError: () => setDistributor(null),
+  } as any);
+
+  const logoutMutation = trpc.distributors.logout.useMutation({
+    onSettled: () => setDistributor(null),
+  });
+
+  const login = (newDistributor: DistributorProfile) => {
+    setDistributor(newDistributor);
   };
 
   const logout = () => {
-    setDistributor(null);
+    logoutMutation.mutate();
   };
 
   return (
     <DistributorAuthContext.Provider
-      value={{ distributor, isAuthenticated: !!distributor, login, logout }}
+      value={{ distributor, isAuthenticated: !!distributor, isLoading, login, logout }}
     >
       {children}
     </DistributorAuthContext.Provider>

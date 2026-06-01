@@ -16,6 +16,7 @@ import { adminAuthRouter } from "./admin.router.js";
 import { usersRouter } from "./users.router.js";
 import { inventoryRouter } from "./inventory.router.js";
 import { distributorsAdminRouter } from "./distributors-admin.router.js";
+import { distributorsRouter } from "./distributors.router.js";
 import { complaintsRouter } from "./complaints.router.js";
 import { qcRouter } from "./qc.router.js";
 import { packingRouter } from "./packing.router.js";
@@ -566,6 +567,7 @@ export const appRouter = router({
   users: usersRouter,
   inventory: inventoryRouter,
   distributorsAdmin: distributorsAdminRouter,
+  distributors: distributorsRouter,
   complaints: complaintsRouter,
   qc: qcRouter,
   packing: packingRouter,

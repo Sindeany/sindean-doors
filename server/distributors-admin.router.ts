@@ -2,6 +2,7 @@
 // distributors-admin.router.ts - إدارة الموزعين (لوحة الإدارة)
 // ============================================================
 import { z } from "zod/v4";
+import bcrypt from "bcryptjs";
 import { db, schema } from "./db.js";
 import { eq, desc } from "drizzle-orm";
 import { router, adminProcedure } from "./trpc.js";
@@ -35,6 +36,7 @@ const distInput = z.object({
   openComplaints:z.number().int().min(0).default(0),
   notes:         z.string().optional(),
   adminNotes:    z.string().optional(),
+  password:      z.string().min(8).optional(), // كلمة مرور اختيارية — تُشفَّر بـ bcrypt قبل الحفظ
 });
 
 export const distributorsAdminRouter = router({
@@ -55,8 +57,10 @@ export const distributorsAdminRouter = router({
       if (existing) {
         throw new TRPCError({ code: "CONFLICT", message: "البريد الإلكتروني مسجل مسبقاً" });
       }
+      const { password, ...rest } = input;
+      const passwordHash = password ? await bcrypt.hash(password, 10) : undefined;
       const now = Date.now();
-      const [result] = await db.insert(schema.distributors).values({ ...input, createdAt: now, updatedAt: now });
+      const [result] = await db.insert(schema.distributors).values({ ...rest, passwordHash, createdAt: now, updatedAt: now });
       return { id: result.insertId };
     }),
 
@@ -71,8 +75,11 @@ export const distributorsAdminRouter = router({
       if (existing && existing.id !== id) {
         throw new TRPCError({ code: "CONFLICT", message: "البريد الإلكتروني مسجل مسبقاً لموزع آخر" });
       }
+      const { password, ...rest } = data;
+      const passwordHash = password ? await bcrypt.hash(password, 10) : undefined;
+      const updateData = passwordHash ? { ...rest, passwordHash, updatedAt: Date.now() } : { ...rest, updatedAt: Date.now() };
       await db.update(schema.distributors)
-        .set({ ...data, updatedAt: Date.now() })
+        .set(updateData)
         .where(eq(schema.distributors.id, id));
       return { ok: true };
     }),
@@ -132,4 +139,26 @@ export const distributorsAdminRouter = router({
     }
     return { ok: true, count: mockData.length };
   }),
+
+  // ── تعيين/تغيير كلمة مرور الموزّع (من لوحة الإدارة) ────────────────────
+  setPassword: adminProcedure
+    .input(
+      z.object({
+        id: z.number().int(),
+        password: z.string().min(8, "كلمة المرور يجب أن تكون 8 أحرف على الأقل"),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const existing = await db.query.distributors.findFirst({
+        where: eq(schema.distributors.id, input.id),
+      });
+      if (!existing)
+        throw new TRPCError({ code: "NOT_FOUND", message: "الموزع غير موجود" });
+      const passwordHash = await bcrypt.hash(input.password, 10);
+      await db
+        .update(schema.distributors)
+        .set({ passwordHash, updatedAt: Date.now() })
+        .where(eq(schema.distributors.id, input.id));
+      return { ok: true };
+    }),
 });
