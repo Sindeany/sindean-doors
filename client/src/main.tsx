@@ -27,8 +27,15 @@ function Root() {
                 (error as { data?: { code?: string } })?.data?.code ===
                 "UNAUTHORIZED"
               ) {
-                // Admin session is cookie-based; redirect to login on auth failure
-                window.location.href = "/admin/login";
+                // نفحص المسار الحالي قبل إعادة التوجيه لأن هذا المعالج global
+                // ويُطلَق على كل mutations في التطبيق (admin + user + supplier).
+                // نريد إعادة التوجيه إلى /admin/login فقط عندما يكون المستخدم
+                // فعلًا في منطقة الإدارة (جلسته انتهت أثناء العمل).
+                // في المسارات الأخرى، يتولى المعالج المحلي في كل Context عرض
+                // رسالة الخطأ دون أي إعادة توجيه.
+                if (window.location.pathname.startsWith("/admin")) {
+                  window.location.href = "/admin/login";
+                }
               }
             },
           },
