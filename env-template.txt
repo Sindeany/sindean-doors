@@ -1,0 +1,50 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# سنديان للأبواب الخشبية — نموذج متغيرات البيئة
+# انسخ هذا الملف وأعد تسميته إلى .env ثم عدّل القيم
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── قاعدة البيانات (MySQL / TiDB) ──────────────────────────────────────────
+# مثال MySQL محلي:
+DATABASE_URL=mysql://root:YOUR_PASSWORD@localhost:3306/sindian_doors
+
+# ── مصادقة JWT ──────────────────────────────────────────────────────────────
+JWT_SECRET=change-this-to-a-long-random-secret-string
+
+# ── Manus OAuth ─────────────────────────────────────────────────────────────
+VITE_APP_ID=your-manus-app-id
+VITE_OAUTH_PORTAL_URL=https://oauth.manus.im
+OAUTH_SERVER_URL=https://oauth.manus.im
+
+# ── Manus Forge API (للذكاء الاصطناعي والإشعارات والتخزين) ─────────────────
+BUILT_IN_FORGE_API_URL=https://api.manus.im
+BUILT_IN_FORGE_API_KEY=your-server-side-forge-api-key
+VITE_FRONTEND_FORGE_API_KEY=your-frontend-forge-api-key
+VITE_FRONTEND_FORGE_API_URL=https://api.manus.im
+
+# ── معلومات المالك ──────────────────────────────────────────────────────────
+OWNER_OPEN_ID=your-manus-open-id
+OWNER_NAME=اسمك
+
+# ── البريد الإلكتروني (SMTP) — لإرسال تأكيد الطلب للعميل ─────────────────────
+# إذا تركتها فارغة، لن يُرسل أي بريد إلكتروني (الطلب يُحفظ بطريقة عادية)
+# مثال: Gmail (استخدم App Password وليس كلمة المرور الأصلية)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
+EMAIL_FROM=سنديان للأبواب الخشبية <orders@sindian-doors.com>
+
+# ── مفتاح داخلي للـ Admin API ───────────────────────────────────────────────
+# الخيار الأفضل (bcrypt hash) — قم بتوليده مرة واحدة:
+#   node -e "require('bcryptjs').hash('كلمة_المرور', 12).then(h => console.log(h))"
+# ثم ضع الناتج هنا:
+ADMIN_PASSWORD_HASH=$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# بديل بسيط (نص عادي، يُستخدم إذا لم تُعيَّن ADMIN_PASSWORD_HASH):
+ADMIN_INTERNAL_KEY=change-this-to-another-random-secret
+
+# ── إعدادات التطبيق ─────────────────────────────────────────────────────────
+VITE_APP_TITLE=سنديان للأبواب الخشبية
+
+# ── CORS (للإنتاج فقط — ضع رابط الفرونتيند) ───────────────────────────────
+ALLOWED_ORIGIN=https://your-domain.com

@@ -1,0 +1,42 @@
+{
+  "build_command": "pnpm run build",
+  "capabilities": [
+    "db",
+    "server",
+    "user"
+  ],
+  "dev_command": "pnpm run dev",
+  "env_vars": {
+    "DATABASE_URL": "mysql://2mjn1VtPmQgzpMg.eaebecac2c2f:bzeve1lCKktPB19k147o@gateway02.us-east-1.prod.aws.tidbcloud.com:4000/SRrXkzo3YQ7qW8GU5VPaHC?ssl={\"rejectUnauthorized\":true}",
+    "DRIZZLE_DATABASE_URL": "mysql://2mjn1VtPmQgzpMg.eaebecac2c2f:bzeve1lCKktPB19k147o@gateway02.us-east-1.prod.aws.tidbcloud.com:4000/SRrXkzo3YQ7qW8GU5VPaHC?ssl={\"rejectUnauthorized\":true}"
+  },
+  "experiments": null,
+  "git_remote": {
+    "repo_url": "s3://vida-prod-gitrepo/webdev-git/310419663029533510/SRrXkzo3YQ7qW8GU5VPaHC",
+    "access_key_id": "ASIAZV3A2ECZG7NAUKZK",
+    "secret_access_key": "4YJfTMYhwMR5wNVvfpGt3NIpTdaAKYuj9Adl8yz+",
+    "session_token": "IQoJb3JpZ2luX2VjEBMaCXVzLWVhc3QtMSJGMEQCIHqMCa1l4RwbN4TP4q7U4WHmexaKqPZ7mxgTWqbQC16oAiBg0CsxA9DA4jNtpsf78of9XSqUpkZqTQ9zEmWQzEb7YCr/Awjc//////////8BEAQaDDY2NTM4NjA5ODg2NiIMxEjUCjjoS6nGRRgtKtMDSkglUxohRyYQSjcggVNbBV/WQEUYLweFHYFC7PuaOll5CbZmBXnVrm8VYOyvT4C959rXhBEZrGzkrvHODq9evUPB+gSfrGLeVygXP0qIKiQ1NqYFxH55h5LtGwKCeuKg85nbDxDeJpmb/xMCVG93synRWxOWR1nXpqJoZNzro8clhavhS98ra4BSqVgfU2VJHJbeE09XzQ+rtwvASn7cBo6TyOqnQ8mDjGxVyS/hWvZQwHnRW4kXprljgkjqD0X72Mmg/7mrzEjJ7iezP/5m0U2sfeiC9bOXFXVGE5kwY+wsxRWUlpoA45TxFZRAurInscrqvbWQ6EKdtuHUMdZqvVdaYVEOKn0k78Fkd4Zu2pOx0ttaoWo734WPR6R+yFnsZZPuu5UE/5agbYFbYO7VJ6xOxQxtIjRSOVKZ7BnEauL5x7aqS6adiasnkgxiRcCOo7FfjoQxRKCE30xB21zdho43kxEk0IIm4W2cYQSDlnQURCSiqCH7JzH9ZaI8Jay1hOoPdUZQJTAREVKrTST0BNSKPBpKlZh+lSz5yQwmWHTD+9njubYBiQxUDMr/OxJCccysNikDzUNBZHQ1zU8lgGzrRNmk/6UcuXJLsm8kVodlubEw+NSy0AY6ngH+5YlsGLGVQUlBuqY6GwbxJSnwvAkksJbfxw81xEJSBre3DDU2jHfV7RNNE2z/fbwWX2l90TCkEfIkVLnuFRYrOP0aifrOnJAbKv9uBdKl3YBss3+rwcRs7aI0EztgYu3LbGOoP3ZV/7KsZasVgmuvjjqascxtEG2xDA0lTQkRX5EEeQP7Xe3VXlC4dlYLgl+NzFMP8PP2zYPbKnaOPw==",
+    "expiration": "2026-05-20T06:22:48.000Z"
+  },
+  "name": "sindian-doors",
+  "path": "/home/ubuntu/sindian-doors",
+  "port": 3000,
+  "secrets": {
+    "BUILT_IN_FORGE_API_KEY": "hShBUdn2cR4spafumwffM5",
+    "BUILT_IN_FORGE_API_URL": "https://forge.manus.ai",
+    "JWT_SECRET": "9SjbsbWNX7mQTuqc8H9ZbF",
+    "OAUTH_SERVER_URL": "https://api.manus.im",
+    "OWNER_NAME": "Sawa Host",
+    "OWNER_OPEN_ID": "BmGGRrAGmjhRACQHQpXUaT",
+    "VITE_ANALYTICS_ENDPOINT": "https://manus-analytics.com",
+    "VITE_ANALYTICS_WEBSITE_ID": "a9e39513-190c-4fde-af0a-2ed5c738152c",
+    "VITE_APP_ID": "SRrXkzo3YQ7qW8GU5VPaHC",
+    "VITE_APP_LOGO": "https://files.manuscdn.com/user_upload_by_module/web_dev_logo/310419663029533510/UYPMxondqUqwXXWa.png",
+    "VITE_APP_TITLE": "سنديان للأبواب",
+    "VITE_FRONTEND_FORGE_API_KEY": "MFDScayi2Zg8Ad5GmoeE6C",
+    "VITE_FRONTEND_FORGE_API_URL": "https://forge.manus.ai",
+    "VITE_OAUTH_PORTAL_URL": "https://manus.im"
+  },
+  "template_id": "web-static",
+  "test_command": "pnpm test"
+}

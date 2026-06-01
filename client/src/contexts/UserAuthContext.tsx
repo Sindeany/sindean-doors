@@ -1,0 +1,121 @@
+// ============================================================
+// User Auth Context - Sindian Doors
+// Real authentication via tRPC users router
+// ============================================================
+
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
+
+const USER_TOKEN_KEY = "sindian_user_token";
+
+interface SafeUser {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  wishlistIds: number[];
+  createdAt: number;
+  // حقول اختيارية (تُحسب مستقبلاً)
+  totalOrders?: number;
+  totalSpent?: number;
+  loyaltyPoints?: number;
+  joinDate?: string;
+}
+
+interface UserAuthContextType {
+  user: SafeUser | null;
+  isAuthenticated: boolean;
+  wishlistIds: number[];
+  login: (email: string, password: string) => Promise<boolean>;
+  register: (name: string, email: string, phone: string, password: string) => Promise<boolean>;
+  logout: () => void;
+  toggleWishlist: (productId: number) => void;
+  isInWishlist: (productId: number) => boolean;
+}
+
+const UserAuthContext = createContext<UserAuthContextType | null>(null);
+
+export function UserAuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<SafeUser | null>(null);
+
+  const loginMutation = trpc.users.login.useMutation();
+  const registerMutation = trpc.users.register.useMutation();
+  const toggleWishlistMutation = trpc.users.toggleWishlist.useMutation();
+
+  // استعادة الجلسة عند تحميل الصفحة
+  const { data: meData } = trpc.users.me.useQuery(undefined, {
+    enabled: !!localStorage.getItem(USER_TOKEN_KEY),
+    retry: false,
+    onError: () => {
+      localStorage.removeItem(USER_TOKEN_KEY);
+      setUser(null);
+    },
+  } as any);
+
+  useEffect(() => {
+    if (meData) setUser(meData as SafeUser);
+  }, [meData]);
+
+  const login = async (email: string, password: string): Promise<boolean> => {
+    try {
+      const result = await loginMutation.mutateAsync({ email, password });
+      localStorage.setItem(USER_TOKEN_KEY, result.token);
+      setUser(result.user as SafeUser);
+      return true;
+    } catch (err: any) {
+      toast.error(err?.message || "خطأ في تسجيل الدخول");
+      return false;
+    }
+  };
+
+  const register = async (name: string, email: string, phone: string, password: string): Promise<boolean> => {
+    try {
+      const result = await registerMutation.mutateAsync({ name, email, phone, password });
+      localStorage.setItem(USER_TOKEN_KEY, result.token);
+      setUser({ ...result.user, createdAt: Date.now() } as SafeUser);
+      return true;
+    } catch (err: any) {
+      toast.error(err?.message || "خطأ في إنشاء الحساب");
+      return false;
+    }
+  };
+
+  const logout = () => {
+    localStorage.removeItem(USER_TOKEN_KEY);
+    setUser(null);
+  };
+
+  const wishlistIds = user?.wishlistIds ?? [];
+
+  const toggleWishlist = async (productId: number) => {
+    if (!user) {
+      toast.error("يرجى تسجيل الدخول أولاً لإضافة المنتجات للمفضلة");
+      return;
+    }
+    try {
+      const result = await toggleWishlistMutation.mutateAsync({ productId });
+      setUser((prev) => prev ? { ...prev, wishlistIds: result.wishlistIds } : prev);
+      const added = result.wishlistIds.includes(productId);
+      toast.success(added ? "تمت إضافة المنتج إلى المفضلة" : "تمت إزالة المنتج من المفضلة");
+    } catch {
+      toast.error("حدث خطأ، يرجى المحاولة مرة أخرى");
+    }
+  };
+
+  const isInWishlist = (productId: number) => wishlistIds.includes(productId);
+
+  return (
+    <UserAuthContext.Provider
+      value={{ user, isAuthenticated: !!user, wishlistIds, login, register, logout, toggleWishlist, isInWishlist }}
+    >
+      {children}
+    </UserAuthContext.Provider>
+  );
+}
+
+export function useUserAuth() {
+  const ctx = useContext(UserAuthContext);
+  if (!ctx) throw new Error("useUserAuth must be used inside UserAuthProvider");
+  return ctx;
+}
