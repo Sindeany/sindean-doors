@@ -564,6 +564,7 @@ export const distributors = mysqlTable("distributors", {
   region: varchar("region", { length: 100 }).notNull().default(""),
   phone: varchar("phone", { length: 50 }).notNull(),
   email: varchar("email", { length: 255 }).notNull().unique(),
+  passwordHash: varchar("password_hash", { length: 255 }),
   whatsapp: varchar("whatsapp", { length: 50 }),
   website: varchar("website", { length: 255 }),
   commercialReg: varchar("commercial_reg", { length: 50 }),
@@ -599,6 +600,16 @@ export const distributors = mysqlTable("distributors", {
 
 export type DistributorRow = typeof distributors.$inferSelect;
 export type NewDistributor = typeof distributors.$inferInsert;
+
+// ── Distributor Sessions ─────────────────────────────────────────────────────
+// جلسات تسجيل دخول الموزعين
+export const distributorSessions = mysqlTable("distributor_sessions", {
+  id: int("id").primaryKey().autoincrement(),
+  distributorId: int("distributor_id").notNull(),
+  token: varchar("token", { length: 255 }).notNull().unique(),
+  expiresAt: bigint("expires_at", { mode: "number" }).notNull(),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
 
 // -- Complaints ----------------------------------------------------------------
 // ????? ???????? ????????
