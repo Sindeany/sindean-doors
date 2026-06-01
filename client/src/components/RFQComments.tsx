@@ -8,8 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
-  MessageSquare, Send, Trash2, Reply, Lock, Globe,
-  ChevronDown, ChevronUp, Loader2, AlertCircle
+  MessageSquare,
+  Send,
+  Trash2,
+  Reply,
+  Lock,
+  Globe,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -46,7 +54,12 @@ function formatTime(ts: number) {
   if (diff < 60_000) return "الآن";
   if (diff < 3600_000) return `منذ ${Math.floor(diff / 60_000)} دقيقة`;
   if (diff < 86400_000) return `منذ ${Math.floor(diff / 3600_000)} ساعة`;
-  return d.toLocaleDateString("ar-SA", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleDateString("ar-SA", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function CommentBubble({
@@ -63,45 +76,66 @@ function CommentBubble({
   depth?: number;
 }) {
   const isAdmin = comment.authorType === "admin";
-  const isOwn = viewer.type === comment.authorType &&
+  const isOwn =
+    viewer.type === comment.authorType &&
     (viewer.type === "admin" || viewer.id === comment.authorId);
 
   return (
-    <div className={`${depth > 0 ? "mr-6 border-r-2 border-stone-100 pr-3" : ""}`}>
+    <div
+      className={`${depth > 0 ? "mr-6 border-r-2 border-stone-100 pr-3" : ""}`}
+    >
       <div className={`flex gap-3 group ${isAdmin ? "flex-row-reverse" : ""}`}>
         {/* Avatar */}
-        <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold
-          ${isAdmin ? "bg-amber-700 text-white" : "bg-stone-200 text-stone-700"}`}>
+        <div
+          className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold
+          ${isAdmin ? "bg-amber-700 text-white" : "bg-stone-200 text-stone-700"}`}
+        >
           {comment.authorName.charAt(0)}
         </div>
 
         {/* Bubble */}
-        <div className={`flex-1 max-w-[85%] ${isAdmin ? "items-end" : "items-start"} flex flex-col`}>
+        <div
+          className={`flex-1 max-w-[85%] ${isAdmin ? "items-end" : "items-start"} flex flex-col`}
+        >
           {/* Header */}
-          <div className={`flex items-center gap-2 mb-1 ${isAdmin ? "flex-row-reverse" : ""}`}>
-            <span className="text-xs font-semibold text-stone-700">{comment.authorName}</span>
+          <div
+            className={`flex items-center gap-2 mb-1 ${isAdmin ? "flex-row-reverse" : ""}`}
+          >
+            <span className="text-xs font-semibold text-stone-700">
+              {comment.authorName}
+            </span>
             {comment.isInternal === 1 && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-300 text-amber-700 gap-1">
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 border-amber-300 text-amber-700 gap-1"
+              >
                 <Lock className="w-2.5 h-2.5" /> داخلي
               </Badge>
             )}
-            <span className="text-[10px] text-stone-400">{formatTime(comment.createdAt)}</span>
+            <span className="text-[10px] text-stone-400">
+              {formatTime(comment.createdAt)}
+            </span>
           </div>
 
           {/* Content */}
-          <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap
-            ${isAdmin
-              ? "bg-amber-700 text-white rounded-tr-sm"
-              : "bg-stone-100 text-stone-800 rounded-tl-sm"
+          <div
+            className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap
+            ${
+              isAdmin
+                ? "bg-amber-700 text-white rounded-tr-sm"
+                : "bg-stone-100 text-stone-800 rounded-tl-sm"
             }
             ${comment.isInternal === 1 ? "border-2 border-dashed border-amber-400" : ""}
-          `}>
+          `}
+          >
             {comment.content}
           </div>
 
           {/* Actions */}
-          <div className={`flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity
-            ${isAdmin ? "flex-row-reverse" : ""}`}>
+          <div
+            className={`flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity
+            ${isAdmin ? "flex-row-reverse" : ""}`}
+          >
             {depth === 0 && (
               <button
                 onClick={() => onReply(comment.id, comment.authorName)}
@@ -144,10 +178,16 @@ function CommentBubble({
 export default function RFQComments({ rfqId, viewer, viewerName }: Props) {
   const [text, setText] = useState("");
   const [isInternal, setIsInternal] = useState(false);
-  const [replyTo, setReplyTo] = useState<{ id: number; name: string } | null>(null);
+  const [replyTo, setReplyTo] = useState<{ id: number; name: string } | null>(
+    null
+  );
   const [isExpanded, setIsExpanded] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const { data: comments = [], refetch, isLoading } = trpc.comments.listByRfq.useQuery(
+  const {
+    data: comments = [],
+    refetch,
+    isLoading,
+  } = trpc.comments.listByRfq.useQuery(
     {
       rfqId,
       viewerType: viewer.type,
@@ -157,18 +197,32 @@ export default function RFQComments({ rfqId, viewer, viewerName }: Props) {
   );
 
   const addByAdmin = trpc.comments.addByAdmin.useMutation({
-    onSuccess: () => { setText(""); setReplyTo(null); refetch(); },
-    onError: (err: { message: string }) => toast.error("خطأ في إرسال التعليق: " + err.message),
+    onSuccess: () => {
+      setText("");
+      setReplyTo(null);
+      refetch();
+    },
+    onError: (err: { message: string }) =>
+      toast.error("خطأ في إرسال التعليق: " + err.message),
   });
 
   const addBySupplier = trpc.comments.addBySupplier.useMutation({
-    onSuccess: () => { setText(""); setReplyTo(null); refetch(); },
-    onError: (err: { message: string }) => toast.error("خطأ في إرسال التعليق: " + err.message),
+    onSuccess: () => {
+      setText("");
+      setReplyTo(null);
+      refetch();
+    },
+    onError: (err: { message: string }) =>
+      toast.error("خطأ في إرسال التعليق: " + err.message),
   });
 
   const deleteComment = trpc.comments.delete.useMutation({
-    onSuccess: () => { refetch(); toast.success("تم حذف التعليق"); },
-    onError: (err: { message: string }) => toast.error("خطأ في الحذف: " + err.message),
+    onSuccess: () => {
+      refetch();
+      toast.success("تم حذف التعليق");
+    },
+    onError: (err: { message: string }) =>
+      toast.error("خطأ في الحذف: " + err.message),
   });
 
   const handleSend = () => {
@@ -205,7 +259,11 @@ export default function RFQComments({ rfqId, viewer, viewerName }: Props) {
     }
   }, [comments.length, isExpanded]);
 
-  const totalCount = comments.reduce((acc: number, c: { replies?: unknown[] }) => acc + 1 + (c.replies?.length || 0), 0);
+  const totalCount = comments.reduce(
+    (acc: number, c: { replies?: unknown[] }) =>
+      acc + 1 + (c.replies?.length || 0),
+    0
+  );
   const isSending = addByAdmin.isPending || addBySupplier.isPending;
 
   return (
@@ -217,12 +275,20 @@ export default function RFQComments({ rfqId, viewer, viewerName }: Props) {
       >
         <div className="flex items-center gap-2">
           <MessageSquare className="w-4 h-4 text-stone-500" />
-          <span className="text-sm font-semibold text-stone-700">التعليقات والاستفسارات</span>
+          <span className="text-sm font-semibold text-stone-700">
+            التعليقات والاستفسارات
+          </span>
           {totalCount > 0 && (
-            <Badge className="bg-amber-700 text-white text-[10px] px-1.5 py-0">{totalCount}</Badge>
+            <Badge className="bg-amber-700 text-white text-[10px] px-1.5 py-0">
+              {totalCount}
+            </Badge>
           )}
         </div>
-        {isExpanded ? <ChevronUp className="w-4 h-4 text-stone-400" /> : <ChevronDown className="w-4 h-4 text-stone-400" />}
+        {isExpanded ? (
+          <ChevronUp className="w-4 h-4 text-stone-400" />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-stone-400" />
+        )}
       </button>
 
       {isExpanded && (
@@ -237,7 +303,9 @@ export default function RFQComments({ rfqId, viewer, viewerName }: Props) {
               <div className="text-center py-8">
                 <MessageSquare className="w-8 h-8 text-stone-300 mx-auto mb-2" />
                 <p className="text-sm text-stone-400">لا توجد تعليقات بعد</p>
-                <p className="text-xs text-stone-300 mt-1">ابدأ المحادثة لتوضيح الشروط أو الاستفسار</p>
+                <p className="text-xs text-stone-300 mt-1">
+                  ابدأ المحادثة لتوضيح الشروط أو الاستفسار
+                </p>
               </div>
             ) : (
               (comments as CommentItem[]).map(comment => (
@@ -246,7 +314,7 @@ export default function RFQComments({ rfqId, viewer, viewerName }: Props) {
                   comment={comment}
                   viewer={viewer}
                   onReply={(id, name) => setReplyTo({ id, name })}
-                  onDelete={(id) => deleteComment.mutate({ commentId: id })}
+                  onDelete={id => deleteComment.mutate({ commentId: id })}
                 />
               ))
             )}
@@ -260,7 +328,10 @@ export default function RFQComments({ rfqId, viewer, viewerName }: Props) {
                 <Reply className="w-3 h-3 inline ml-1" />
                 رد على: <strong>{replyTo.name}</strong>
               </span>
-              <button onClick={() => setReplyTo(null)} className="text-amber-500 hover:text-amber-700">
+              <button
+                onClick={() => setReplyTo(null)}
+                className="text-amber-500 hover:text-amber-700"
+              >
                 <Trash2 className="w-3 h-3" />
               </button>
             </div>
@@ -274,12 +345,17 @@ export default function RFQComments({ rfqId, viewer, viewerName }: Props) {
                 <button
                   onClick={() => setIsInternal(v => !v)}
                   className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-colors
-                    ${isInternal
-                      ? "bg-amber-100 border-amber-300 text-amber-700"
-                      : "bg-white border-stone-200 text-stone-500 hover:border-stone-300"
+                    ${
+                      isInternal
+                        ? "bg-amber-100 border-amber-300 text-amber-700"
+                        : "bg-white border-stone-200 text-stone-500 hover:border-stone-300"
                     }`}
                 >
-                  {isInternal ? <Lock className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
+                  {isInternal ? (
+                    <Lock className="w-3 h-3" />
+                  ) : (
+                    <Globe className="w-3 h-3" />
+                  )}
                   {isInternal ? "داخلي (للإدارة فقط)" : "مرئي للمورد"}
                 </button>
               </div>
@@ -304,10 +380,16 @@ export default function RFQComments({ rfqId, viewer, viewerName }: Props) {
                 className="bg-amber-700 hover:bg-amber-800 text-white self-end px-3"
                 size="sm"
               >
-                {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {isSending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
               </Button>
             </div>
-            <p className="text-[10px] text-stone-400 mt-1 text-left">Ctrl+Enter للإرسال السريع</p>
+            <p className="text-[10px] text-stone-400 mt-1 text-left">
+              Ctrl+Enter للإرسال السريع
+            </p>
           </div>
         </>
       )}

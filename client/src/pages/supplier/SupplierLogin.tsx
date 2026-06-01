@@ -5,10 +5,27 @@ import { useSupplierAuth } from "@/contexts/SupplierAuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Mail, Lock, Phone, User, MapPin, Globe, Tag, AlertCircle, CheckCircle } from "lucide-react";
+import {
+  Building2,
+  Mail,
+  Lock,
+  Phone,
+  User,
+  MapPin,
+  Globe,
+  Tag,
+  AlertCircle,
+  CheckCircle,
+} from "lucide-react";
 
 const CATEGORIES = [
   { id: "wood", label: "أخشاب" },
@@ -35,25 +52,32 @@ export default function SupplierLogin() {
 
   // Register form
   const [reg, setReg] = useState({
-    companyName: "", contactName: "", email: "", phone: "",
-    password: "", confirmPassword: "", city: "", address: "", website: "",
+    companyName: "",
+    contactName: "",
+    email: "",
+    phone: "",
+    password: "",
+    confirmPassword: "",
+    city: "",
+    address: "",
+    website: "",
   });
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
   const loginMutation = trpc.suppliers.login.useMutation({
-    onSuccess: (data) => {
+    onSuccess: data => {
       login(data.supplier as any);
       navigate("/supplier/dashboard");
     },
-    onError: (err) => setError(err.message),
+    onError: err => setError(err.message),
   });
 
   const registerMutation = trpc.suppliers.register.useMutation({
-    onSuccess: (data) => {
+    onSuccess: data => {
       setSuccess(data.message);
       setActiveTab("login");
     },
-    onError: (err) => setError(err.message),
+    onError: err => setError(err.message),
   });
 
   const handleLogin = (e: React.FormEvent) => {
@@ -112,7 +136,9 @@ export default function SupplierLogin() {
 
         <Card className="shadow-xl border-0 bg-white/90 backdrop-blur">
           <CardHeader className="text-center pb-4">
-            <CardTitle className="text-xl text-stone-800">بوابة الموردين</CardTitle>
+            <CardTitle className="text-xl text-stone-800">
+              بوابة الموردين
+            </CardTitle>
             <CardDescription className="text-stone-500">
               سجّل دخولك أو انضم كمورد جديد للمنصة
             </CardDescription>
@@ -131,7 +157,14 @@ export default function SupplierLogin() {
               </div>
             )}
 
-            <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setError(""); setSuccess(""); }}>
+            <Tabs
+              value={activeTab}
+              onValueChange={v => {
+                setActiveTab(v);
+                setError("");
+                setSuccess("");
+              }}
+            >
               <TabsList className="grid w-full grid-cols-2 mb-6">
                 <TabsTrigger value="login">تسجيل الدخول</TabsTrigger>
                 <TabsTrigger value="register">تسجيل جديد</TabsTrigger>
@@ -141,7 +174,9 @@ export default function SupplierLogin() {
               <TabsContent value="login">
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="email" className="text-stone-700">البريد الإلكتروني</Label>
+                    <Label htmlFor="email" className="text-stone-700">
+                      البريد الإلكتروني
+                    </Label>
                     <div className="relative">
                       <Mail className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
                       <Input
@@ -157,7 +192,9 @@ export default function SupplierLogin() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="password" className="text-stone-700">كلمة المرور</Label>
+                    <Label htmlFor="password" className="text-stone-700">
+                      كلمة المرور
+                    </Label>
                     <div className="relative">
                       <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
                       <Input
@@ -176,7 +213,9 @@ export default function SupplierLogin() {
                     className="w-full bg-amber-800 hover:bg-amber-900 text-white"
                     disabled={loginMutation.isPending}
                   >
-                    {loginMutation.isPending ? "جاري تسجيل الدخول..." : "تسجيل الدخول"}
+                    {loginMutation.isPending
+                      ? "جاري تسجيل الدخول..."
+                      : "تسجيل الدخول"}
                   </Button>
                 </form>
               </TabsContent>
@@ -186,12 +225,16 @@ export default function SupplierLogin() {
                 <form onSubmit={handleRegister} className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-stone-700 text-sm">اسم الشركة *</Label>
+                      <Label className="text-stone-700 text-sm">
+                        اسم الشركة *
+                      </Label>
                       <div className="relative">
                         <Building2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400" />
                         <Input
                           value={reg.companyName}
-                          onChange={e => setReg(p => ({ ...p, companyName: e.target.value }))}
+                          onChange={e =>
+                            setReg(p => ({ ...p, companyName: e.target.value }))
+                          }
                           placeholder="شركة الأخشاب"
                           className="pr-9 text-sm"
                           required
@@ -199,12 +242,16 @@ export default function SupplierLogin() {
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-stone-700 text-sm">اسم المسؤول *</Label>
+                      <Label className="text-stone-700 text-sm">
+                        اسم المسؤول *
+                      </Label>
                       <div className="relative">
                         <User className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400" />
                         <Input
                           value={reg.contactName}
-                          onChange={e => setReg(p => ({ ...p, contactName: e.target.value }))}
+                          onChange={e =>
+                            setReg(p => ({ ...p, contactName: e.target.value }))
+                          }
                           placeholder="محمد أحمد"
                           className="pr-9 text-sm"
                           required
@@ -214,13 +261,17 @@ export default function SupplierLogin() {
                   </div>
 
                   <div className="space-y-1">
-                    <Label className="text-stone-700 text-sm">البريد الإلكتروني *</Label>
+                    <Label className="text-stone-700 text-sm">
+                      البريد الإلكتروني *
+                    </Label>
                     <div className="relative">
                       <Mail className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400" />
                       <Input
                         type="email"
                         value={reg.email}
-                        onChange={e => setReg(p => ({ ...p, email: e.target.value }))}
+                        onChange={e =>
+                          setReg(p => ({ ...p, email: e.target.value }))
+                        }
                         placeholder="info@company.com"
                         className="pr-9 text-sm"
                         required
@@ -230,12 +281,16 @@ export default function SupplierLogin() {
                   </div>
 
                   <div className="space-y-1">
-                    <Label className="text-stone-700 text-sm">رقم الجوال *</Label>
+                    <Label className="text-stone-700 text-sm">
+                      رقم الجوال *
+                    </Label>
                     <div className="relative">
                       <Phone className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400" />
                       <Input
                         value={reg.phone}
-                        onChange={e => setReg(p => ({ ...p, phone: e.target.value }))}
+                        onChange={e =>
+                          setReg(p => ({ ...p, phone: e.target.value }))
+                        }
                         placeholder="05xxxxxxxx"
                         className="pr-9 text-sm"
                         required
@@ -251,19 +306,25 @@ export default function SupplierLogin() {
                         <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400" />
                         <Input
                           value={reg.city}
-                          onChange={e => setReg(p => ({ ...p, city: e.target.value }))}
+                          onChange={e =>
+                            setReg(p => ({ ...p, city: e.target.value }))
+                          }
                           placeholder="الرياض"
                           className="pr-9 text-sm"
                         />
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-stone-700 text-sm">الموقع الإلكتروني</Label>
+                      <Label className="text-stone-700 text-sm">
+                        الموقع الإلكتروني
+                      </Label>
                       <div className="relative">
                         <Globe className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400" />
                         <Input
                           value={reg.website}
-                          onChange={e => setReg(p => ({ ...p, website: e.target.value }))}
+                          onChange={e =>
+                            setReg(p => ({ ...p, website: e.target.value }))
+                          }
                           placeholder="www.company.com"
                           className="pr-9 text-sm"
                           dir="ltr"
@@ -274,22 +335,33 @@ export default function SupplierLogin() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-stone-700 text-sm">كلمة المرور *</Label>
+                      <Label className="text-stone-700 text-sm">
+                        كلمة المرور *
+                      </Label>
                       <Input
                         type="password"
                         value={reg.password}
-                        onChange={e => setReg(p => ({ ...p, password: e.target.value }))}
+                        onChange={e =>
+                          setReg(p => ({ ...p, password: e.target.value }))
+                        }
                         placeholder="8 أحرف على الأقل"
                         className="text-sm"
                         required
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-stone-700 text-sm">تأكيد كلمة المرور *</Label>
+                      <Label className="text-stone-700 text-sm">
+                        تأكيد كلمة المرور *
+                      </Label>
                       <Input
                         type="password"
                         value={reg.confirmPassword}
-                        onChange={e => setReg(p => ({ ...p, confirmPassword: e.target.value }))}
+                        onChange={e =>
+                          setReg(p => ({
+                            ...p,
+                            confirmPassword: e.target.value,
+                          }))
+                        }
                         placeholder="أعد كتابة كلمة المرور"
                         className="text-sm"
                         required
@@ -326,7 +398,9 @@ export default function SupplierLogin() {
                     className="w-full bg-amber-800 hover:bg-amber-900 text-white"
                     disabled={registerMutation.isPending}
                   >
-                    {registerMutation.isPending ? "جاري التسجيل..." : "إرسال طلب التسجيل"}
+                    {registerMutation.isPending
+                      ? "جاري التسجيل..."
+                      : "إرسال طلب التسجيل"}
                   </Button>
                   <p className="text-xs text-stone-500 text-center">
                     سيتم مراجعة طلبك وتفعيل حسابك خلال 24-48 ساعة

@@ -115,12 +115,9 @@ async function startServer() {
     const subtype = mimeType.split("/")[1]; // "jpeg", "png", etc.
     const mappedExt = subtype ? ALLOWED_MIME_TYPES[subtype] : undefined;
     if (!mimeType.startsWith("image/") || !mappedExt) {
-      res
-        .status(415)
-        .json({
-          error:
-            "نوع الملف غير مدعوم. الأنواع المسموح بها: JPEG، PNG، WebP، GIF",
-        });
+      res.status(415).json({
+        error: "نوع الملف غير مدعوم. الأنواع المسموح بها: JPEG، PNG، WebP، GIF",
+      });
       return;
     }
 

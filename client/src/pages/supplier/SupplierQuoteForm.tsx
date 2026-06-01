@@ -13,10 +13,21 @@ interface Props {
   onSuccess: () => void;
 }
 
-export default function SupplierQuoteForm({ rfqId, onClose, onSuccess }: Props) {
+export default function SupplierQuoteForm({
+  rfqId,
+  onClose,
+  onSuccess,
+}: Props) {
   const { data: rfqData, isLoading } = trpc.rfq.getById.useQuery({ id: rfqId });
 
-  const [lineItems, setLineItems] = useState<Array<{ itemIndex: number; unitPrice: number; totalPrice: number; notes: string }>>([]);
+  const [lineItems, setLineItems] = useState<
+    Array<{
+      itemIndex: number;
+      unitPrice: number;
+      totalPrice: number;
+      notes: string;
+    }>
+  >([]);
   const [deliveryDays, setDeliveryDays] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("");
   const [warrantyMonths, setWarrantyMonths] = useState("");
@@ -26,33 +37,49 @@ export default function SupplierQuoteForm({ rfqId, onClose, onSuccess }: Props) 
 
   const submitMutation = trpc.rfq.submitQuote.useMutation({
     onSuccess: () => onSuccess(),
-    onError: (err) => setError(err.message),
+    onError: err => setError(err.message),
   });
 
   // تهيئة بنود العرض عند تحميل بيانات الـ RFQ
   const initLineItems = () => {
     if (rfqData && lineItems.length === 0) {
       const items = rfqData.rfq.items as any[];
-      setLineItems(items.map((_, i) => ({ itemIndex: i, unitPrice: 0, totalPrice: 0, notes: "" })));
+      setLineItems(
+        items.map((_, i) => ({
+          itemIndex: i,
+          unitPrice: 0,
+          totalPrice: 0,
+          notes: "",
+        }))
+      );
     }
   };
 
   if (rfqData && lineItems.length === 0) initLineItems();
 
-  const updateLineItem = (index: number, field: string, value: number | string) => {
-    setLineItems(prev => prev.map((item, i) => {
-      if (i !== index) return item;
-      const updated = { ...item, [field]: value };
-      if (field === "unitPrice") {
-        const rfqItems = rfqData?.rfq.items as any[];
-        const qty = rfqItems?.[item.itemIndex]?.qty || 1;
-        updated.totalPrice = Number(value) * qty;
-      }
-      return updated;
-    }));
+  const updateLineItem = (
+    index: number,
+    field: string,
+    value: number | string
+  ) => {
+    setLineItems(prev =>
+      prev.map((item, i) => {
+        if (i !== index) return item;
+        const updated = { ...item, [field]: value };
+        if (field === "unitPrice") {
+          const rfqItems = rfqData?.rfq.items as any[];
+          const qty = rfqItems?.[item.itemIndex]?.qty || 1;
+          updated.totalPrice = Number(value) * qty;
+        }
+        return updated;
+      })
+    );
   };
 
-  const totalPrice = lineItems.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+  const totalPrice = lineItems.reduce(
+    (sum, item) => sum + (item.totalPrice || 0),
+    0
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,20 +101,30 @@ export default function SupplierQuoteForm({ rfqId, onClose, onSuccess }: Props) 
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" dir="rtl">
+    <div
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+      dir="rtl"
+    >
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-stone-800">تقديم عرض سعر</h2>
-            {rfqData && <p className="text-sm text-stone-500">{rfqData.rfq.title}</p>}
+            {rfqData && (
+              <p className="text-sm text-stone-500">{rfqData.rfq.title}</p>
+            )}
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-stone-100 rounded-lg">
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-stone-100 rounded-lg"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {isLoading ? (
-          <div className="p-8 text-center text-stone-400">جاري تحميل تفاصيل الطلب...</div>
+          <div className="p-8 text-center text-stone-400">
+            جاري تحميل تفاصيل الطلب...
+          </div>
         ) : rfqData ? (
           <form onSubmit={handleSubmit} className="p-6 space-y-6">
             {error && (
@@ -107,10 +144,23 @@ export default function SupplierQuoteForm({ rfqId, onClose, onSuccess }: Props) 
                 <div className="text-sm text-amber-800 space-y-1">
                   {rfqData.rfq.description && <p>{rfqData.rfq.description}</p>}
                   <div className="flex gap-4 flex-wrap">
-                    {rfqData.rfq.deliveryDays && <span>المدة المطلوبة: {rfqData.rfq.deliveryDays} يوم</span>}
-                    {rfqData.rfq.paymentTerms && <span>شروط الدفع: {rfqData.rfq.paymentTerms}</span>}
-                    {rfqData.rfq.warrantyMonths && <span>الضمان: {rfqData.rfq.warrantyMonths} شهر</span>}
-                    <span>الموعد النهائي: {new Date(rfqData.rfq.submissionDeadline).toLocaleDateString("ar-SA")}</span>
+                    {rfqData.rfq.deliveryDays && (
+                      <span>
+                        المدة المطلوبة: {rfqData.rfq.deliveryDays} يوم
+                      </span>
+                    )}
+                    {rfqData.rfq.paymentTerms && (
+                      <span>شروط الدفع: {rfqData.rfq.paymentTerms}</span>
+                    )}
+                    {rfqData.rfq.warrantyMonths && (
+                      <span>الضمان: {rfqData.rfq.warrantyMonths} شهر</span>
+                    )}
+                    <span>
+                      الموعد النهائي:{" "}
+                      {new Date(
+                        rfqData.rfq.submissionDeadline
+                      ).toLocaleDateString("ar-SA")}
+                    </span>
                   </div>
                 </div>
               </CardContent>
@@ -124,21 +174,41 @@ export default function SupplierQuoteForm({ rfqId, onClose, onSuccess }: Props) 
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between mb-3">
                       <div>
-                        <div className="font-medium text-stone-800">{item.name}</div>
-                        {item.description && <div className="text-xs text-stone-500">{item.description}</div>}
-                        {item.specs && <div className="text-xs text-amber-700 mt-1">المواصفات: {item.specs}</div>}
-                        <div className="text-xs text-stone-400 mt-1">الكمية: {item.qty} {item.unit}</div>
+                        <div className="font-medium text-stone-800">
+                          {item.name}
+                        </div>
+                        {item.description && (
+                          <div className="text-xs text-stone-500">
+                            {item.description}
+                          </div>
+                        )}
+                        {item.specs && (
+                          <div className="text-xs text-amber-700 mt-1">
+                            المواصفات: {item.specs}
+                          </div>
+                        )}
+                        <div className="text-xs text-stone-400 mt-1">
+                          الكمية: {item.qty} {item.unit}
+                        </div>
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-3">
                       <div className="space-y-1">
-                        <Label className="text-xs text-stone-600">سعر الوحدة (ر.س) *</Label>
+                        <Label className="text-xs text-stone-600">
+                          سعر الوحدة (ر.س) *
+                        </Label>
                         <Input
                           type="number"
                           min="0"
                           step="0.01"
                           value={lineItems[i]?.unitPrice || ""}
-                          onChange={e => updateLineItem(i, "unitPrice", parseFloat(e.target.value) || 0)}
+                          onChange={e =>
+                            updateLineItem(
+                              i,
+                              "unitPrice",
+                              parseFloat(e.target.value) || 0
+                            )
+                          }
                           placeholder="0.00"
                           className="text-sm"
                           required
@@ -146,7 +216,9 @@ export default function SupplierQuoteForm({ rfqId, onClose, onSuccess }: Props) 
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs text-stone-600">الإجمالي (ر.س)</Label>
+                        <Label className="text-xs text-stone-600">
+                          الإجمالي (ر.س)
+                        </Label>
                         <Input
                           type="number"
                           value={lineItems[i]?.totalPrice?.toFixed(2) || ""}
@@ -159,7 +231,9 @@ export default function SupplierQuoteForm({ rfqId, onClose, onSuccess }: Props) 
                         <Label className="text-xs text-stone-600">ملاحظة</Label>
                         <Input
                           value={lineItems[i]?.notes || ""}
-                          onChange={e => updateLineItem(i, "notes", e.target.value)}
+                          onChange={e =>
+                            updateLineItem(i, "notes", e.target.value)
+                          }
                           placeholder="اختياري"
                           className="text-sm"
                         />
@@ -173,7 +247,9 @@ export default function SupplierQuoteForm({ rfqId, onClose, onSuccess }: Props) 
               <div className="flex justify-end">
                 <div className="bg-amber-50 border border-amber-200 rounded-lg px-6 py-3 text-right">
                   <div className="text-sm text-amber-700">الإجمالي الكلي</div>
-                  <div className="text-2xl font-bold text-amber-900">{totalPrice.toLocaleString()} ر.س</div>
+                  <div className="text-2xl font-bold text-amber-900">
+                    {totalPrice.toLocaleString()} ر.س
+                  </div>
                 </div>
               </div>
             </div>
@@ -181,7 +257,9 @@ export default function SupplierQuoteForm({ rfqId, onClose, onSuccess }: Props) 
             {/* Terms */}
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-1">
-                <Label className="text-sm text-stone-700">مدة التوريد (يوم)</Label>
+                <Label className="text-sm text-stone-700">
+                  مدة التوريد (يوم)
+                </Label>
                 <Input
                   type="number"
                   min="1"
@@ -239,7 +317,9 @@ export default function SupplierQuoteForm({ rfqId, onClose, onSuccess }: Props) 
                 disabled={submitMutation.isPending || totalPrice === 0}
               >
                 <Send className="w-4 h-4 ml-2" />
-                {submitMutation.isPending ? "جاري الإرسال..." : "إرسال عرض السعر"}
+                {submitMutation.isPending
+                  ? "جاري الإرسال..."
+                  : "إرسال عرض السعر"}
               </Button>
               <Button type="button" variant="outline" onClick={onClose}>
                 إلغاء
@@ -247,7 +327,9 @@ export default function SupplierQuoteForm({ rfqId, onClose, onSuccess }: Props) 
             </div>
           </form>
         ) : (
-          <div className="p-8 text-center text-red-500">تعذر تحميل بيانات الطلب</div>
+          <div className="p-8 text-center text-red-500">
+            تعذر تحميل بيانات الطلب
+          </div>
         )}
       </div>
     </div>

@@ -51,7 +51,9 @@ export function SupplierAuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <SupplierAuthContext.Provider value={{ supplier, isLoading, login, logout }}>
+    <SupplierAuthContext.Provider
+      value={{ supplier, isLoading, login, logout }}
+    >
       {children}
     </SupplierAuthContext.Provider>
   );
@@ -59,6 +61,7 @@ export function SupplierAuthProvider({ children }: { children: ReactNode }) {
 
 export function useSupplierAuth() {
   const ctx = useContext(SupplierAuthContext);
-  if (!ctx) throw new Error("useSupplierAuth must be used within SupplierAuthProvider");
+  if (!ctx)
+    throw new Error("useSupplierAuth must be used within SupplierAuthProvider");
   return ctx;
 }

@@ -16,27 +16,34 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 يوم
 const USER_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
-  sameSite: (process.env.NODE_ENV === "production" ? "strict" : "lax") as "strict" | "lax",
+  sameSite: (process.env.NODE_ENV === "production" ? "strict" : "lax") as
+    | "strict"
+    | "lax",
   maxAge: SESSION_TTL_MS,
   path: "/",
 };
 
 // ── Router ───────────────────────────────────────────────────────────────────
 export const usersRouter = router({
-
   // ── تسجيل مستخدم جديد ───────────────────────────────────────────────────
   register: publicProcedure
-    .input(z.object({
-      name: z.string().min(2, "الاسم يجب أن يكون حرفين على الأقل"),
-      email: z.string().email("بريد إلكتروني غير صحيح"),
-      phone: z.string().min(10, "رقم الجوال غير صحيح"),
-      password: z.string().min(8, "كلمة المرور يجب أن تكون 8 أحرف على الأقل"),
-    }))
+    .input(
+      z.object({
+        name: z.string().min(2, "الاسم يجب أن يكون حرفين على الأقل"),
+        email: z.string().email("بريد إلكتروني غير صحيح"),
+        phone: z.string().min(10, "رقم الجوال غير صحيح"),
+        password: z.string().min(8, "كلمة المرور يجب أن تكون 8 أحرف على الأقل"),
+      })
+    )
     .mutation(async ({ input, ctx }) => {
       const existing = await db.query.users.findFirst({
         where: eq(schema.users.email, input.email),
       });
-      if (existing) throw new TRPCError({ code: "CONFLICT", message: "البريد الإلكتروني مسجل مسبقاً" });
+      if (existing)
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "البريد الإلكتروني مسجل مسبقاً",
+        });
 
       const passwordHash = await bcrypt.hash(input.password, 10);
       const now = Date.now();
@@ -60,23 +67,41 @@ export const usersRouter = router({
       });
 
       ctx.res!.cookie("userSession", token, USER_COOKIE_OPTIONS);
-      return { user: { id: userId, name: input.name, email: input.email, phone: input.phone, wishlistIds: [] } };
+      return {
+        user: {
+          id: userId,
+          name: input.name,
+          email: input.email,
+          phone: input.phone,
+          wishlistIds: [],
+        },
+      };
     }),
 
   // ── تسجيل الدخول ────────────────────────────────────────────────────────
   login: publicProcedure
-    .input(z.object({
-      email: z.string().email(),
-      password: z.string().min(1),
-    }))
+    .input(
+      z.object({
+        email: z.string().email(),
+        password: z.string().min(1),
+      })
+    )
     .mutation(async ({ input, ctx }) => {
       const user = await db.query.users.findFirst({
         where: eq(schema.users.email, input.email),
       });
-      if (!user) throw new TRPCError({ code: "UNAUTHORIZED", message: "البريد أو كلمة المرور غير صحيحة" });
+      if (!user)
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "البريد أو كلمة المرور غير صحيحة",
+        });
 
       const valid = await bcrypt.compare(input.password, user.passwordHash);
-      if (!valid) throw new TRPCError({ code: "UNAUTHORIZED", message: "البريد أو كلمة المرور غير صحيحة" });
+      if (!valid)
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "البريد أو كلمة المرور غير صحيحة",
+        });
 
       const token = nanoid(64);
       const now = Date.now();
@@ -102,7 +127,9 @@ export const usersRouter = router({
   logout: userProcedure.mutation(async ({ ctx }) => {
     const token = ctx.userToken!;
     ctx.res!.clearCookie("userSession", { path: "/" });
-    await db.delete(schema.userSessions).where(eq(schema.userSessions.token, token));
+    await db
+      .delete(schema.userSessions)
+      .where(eq(schema.userSessions.token, token));
     return { success: true };
   }),
 
@@ -113,10 +140,11 @@ export const usersRouter = router({
       const user = (ctx as any).user;
       const wishlist: number[] = (user.wishlistIds as number[]) ?? [];
       const updated = wishlist.includes(input.productId)
-        ? wishlist.filter((id) => id !== input.productId)
+        ? wishlist.filter(id => id !== input.productId)
         : [...wishlist, input.productId];
 
-      await db.update(schema.users)
+      await db
+        .update(schema.users)
         .set({ wishlistIds: updated, updatedAt: Date.now() })
         .where(eq(schema.users.id, user.id));
 

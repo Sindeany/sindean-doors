@@ -3,7 +3,13 @@
 // Real authentication via tRPC users router
 // ============================================================
 
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 
@@ -26,7 +32,12 @@ interface UserAuthContextType {
   isAuthenticated: boolean;
   wishlistIds: number[];
   login: (email: string, password: string) => Promise<boolean>;
-  register: (name: string, email: string, phone: string, password: string) => Promise<boolean>;
+  register: (
+    name: string,
+    email: string,
+    phone: string,
+    password: string
+  ) => Promise<boolean>;
   logout: () => void;
   toggleWishlist: (productId: number) => void;
   isInWishlist: (productId: number) => boolean;
@@ -68,9 +79,19 @@ export function UserAuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const register = async (name: string, email: string, phone: string, password: string): Promise<boolean> => {
+  const register = async (
+    name: string,
+    email: string,
+    phone: string,
+    password: string
+  ): Promise<boolean> => {
     try {
-      const result = await registerMutation.mutateAsync({ name, email, phone, password });
+      const result = await registerMutation.mutateAsync({
+        name,
+        email,
+        phone,
+        password,
+      });
       setUser({ ...result.user, createdAt: Date.now() } as SafeUser);
       return true;
     } catch (err: any) {
@@ -92,9 +113,13 @@ export function UserAuthProvider({ children }: { children: ReactNode }) {
     }
     try {
       const result = await toggleWishlistMutation.mutateAsync({ productId });
-      setUser((prev) => prev ? { ...prev, wishlistIds: result.wishlistIds } : prev);
+      setUser(prev =>
+        prev ? { ...prev, wishlistIds: result.wishlistIds } : prev
+      );
       const added = result.wishlistIds.includes(productId);
-      toast.success(added ? "تمت إضافة المنتج إلى المفضلة" : "تمت إزالة المنتج من المفضلة");
+      toast.success(
+        added ? "تمت إضافة المنتج إلى المفضلة" : "تمت إزالة المنتج من المفضلة"
+      );
     } catch {
       toast.error("حدث خطأ، يرجى المحاولة مرة أخرى");
     }
@@ -104,7 +129,16 @@ export function UserAuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <UserAuthContext.Provider
-      value={{ user, isAuthenticated: !!user, wishlistIds, login, register, logout, toggleWishlist, isInWishlist }}
+      value={{
+        user,
+        isAuthenticated: !!user,
+        wishlistIds,
+        login,
+        register,
+        logout,
+        toggleWishlist,
+        isInWishlist,
+      }}
     >
       {children}
     </UserAuthContext.Provider>
