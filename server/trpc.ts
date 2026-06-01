@@ -31,12 +31,36 @@ function validateRequestOrigin(req: Request | undefined): void {
   const origin = req.headers["origin"] as string | undefined;
   if (!origin) return; // absent = same-origin or non-browser request → allow
   const isProduction = process.env.NODE_ENV === "production";
-  const appUrl = process.env.APP_URL || "http://localhost:5173";
-  const allowed = isProduction
-    ? [appUrl]
-    : ["http://localhost:5173", "http://localhost:3000", "http://localhost:3001"];
-  if (!allowed.includes(origin)) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "طلب من مصدر غير مصرح به" });
+
+  if (isProduction) {
+    // في الإنتاج: APP_URL فقط (fail-closed)
+    const appUrl = process.env.APP_URL || "";
+    if (!appUrl || origin !== appUrl) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "طلب من مصدر غير مصرح به",
+      });
+    }
+  } else {
+    // في dev: نقبل أي localhost أو 127.0.0.1 بأي منفذ (Vite يختار المنفذ ديناميكيًا)
+    try {
+      const { hostname, protocol } = new URL(origin);
+      if (
+        protocol !== "http:" ||
+        (hostname !== "localhost" && hostname !== "127.0.0.1")
+      ) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "طلب من مصدر غير مصرح به",
+        });
+      }
+    } catch (e) {
+      if (e instanceof TRPCError) throw e;
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "طلب من مصدر غير مصرح به",
+      });
+    }
   }
 }
 
@@ -55,13 +79,23 @@ export const adminProcedure = t.procedure.use(async ({ ctx, next }) => {
 export const userProcedure = t.procedure.use(async ({ ctx, next }) => {
   validateRequestOrigin(ctx.req);
   const token = ctx.userToken;
-  if (!token) throw new TRPCError({ code: "UNAUTHORIZED", message: "يرجى تسجيل الدخول" });
+  if (!token)
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "يرجى تسجيل الدخول" });
   const now = Date.now();
   const session = await db.query.userSessions.findFirst({
-    where: and(eq(schema.userSessions.token, token), gt(schema.userSessions.expiresAt, now)),
+    where: and(
+      eq(schema.userSessions.token, token),
+      gt(schema.userSessions.expiresAt, now)
+    ),
   });
-  if (!session) throw new TRPCError({ code: "UNAUTHORIZED", message: "انتهت الجلسة، يرجى تسجيل الدخول مجدداً" });
-  const user = await db.query.users.findFirst({ where: eq(schema.users.id, session.userId) });
+  if (!session)
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "انتهت الجلسة، يرجى تسجيل الدخول مجدداً",
+    });
+  const user = await db.query.users.findFirst({
+    where: eq(schema.users.id, session.userId),
+  });
   if (!user) throw new TRPCError({ code: "UNAUTHORIZED" });
   return next({ ctx: { ...ctx, user } });
 });
@@ -70,13 +104,23 @@ export const userProcedure = t.procedure.use(async ({ ctx, next }) => {
 export const supplierProcedure = t.procedure.use(async ({ ctx, next }) => {
   validateRequestOrigin(ctx.req);
   const token = ctx.supplierToken;
-  if (!token) throw new TRPCError({ code: "UNAUTHORIZED", message: "يرجى تسجيل الدخول" });
+  if (!token)
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "يرجى تسجيل الدخول" });
   const now = Date.now();
   const session = await db.query.supplierSessions.findFirst({
-    where: and(eq(schema.supplierSessions.token, token), gt(schema.supplierSessions.expiresAt, now)),
+    where: and(
+      eq(schema.supplierSessions.token, token),
+      gt(schema.supplierSessions.expiresAt, now)
+    ),
   });
-  if (!session) throw new TRPCError({ code: "UNAUTHORIZED", message: "انتهت صلاحية الجلسة" });
-  const supplier = await db.query.suppliers.findFirst({ where: eq(schema.suppliers.id, session.supplierId) });
+  if (!session)
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "انتهت صلاحية الجلسة",
+    });
+  const supplier = await db.query.suppliers.findFirst({
+    where: eq(schema.suppliers.id, session.supplierId),
+  });
   if (!supplier) throw new TRPCError({ code: "UNAUTHORIZED" });
   return next({ ctx: { ...ctx, supplier } });
 });
