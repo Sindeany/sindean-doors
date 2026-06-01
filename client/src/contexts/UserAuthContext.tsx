@@ -7,8 +7,6 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 
-const USER_TOKEN_KEY = "sindian_user_token";
-
 interface SafeUser {
   id: number;
   name: string;
@@ -42,13 +40,15 @@ export function UserAuthProvider({ children }: { children: ReactNode }) {
   const loginMutation = trpc.users.login.useMutation();
   const registerMutation = trpc.users.register.useMutation();
   const toggleWishlistMutation = trpc.users.toggleWishlist.useMutation();
+  const logoutMutation = trpc.users.logout.useMutation({
+    onSettled: () => setUser(null),
+  });
 
-  // استعادة الجلسة عند تحميل الصفحة
+  // استعادة الجلسة عند تحميل الصفحة عبر httpOnly cookie
   const { data: meData } = trpc.users.me.useQuery(undefined, {
-    enabled: !!localStorage.getItem(USER_TOKEN_KEY),
+    enabled: true,
     retry: false,
     onError: () => {
-      localStorage.removeItem(USER_TOKEN_KEY);
       setUser(null);
     },
   } as any);
@@ -60,7 +60,6 @@ export function UserAuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       const result = await loginMutation.mutateAsync({ email, password });
-      localStorage.setItem(USER_TOKEN_KEY, result.token);
       setUser(result.user as SafeUser);
       return true;
     } catch (err: any) {
@@ -72,7 +71,6 @@ export function UserAuthProvider({ children }: { children: ReactNode }) {
   const register = async (name: string, email: string, phone: string, password: string): Promise<boolean> => {
     try {
       const result = await registerMutation.mutateAsync({ name, email, phone, password });
-      localStorage.setItem(USER_TOKEN_KEY, result.token);
       setUser({ ...result.user, createdAt: Date.now() } as SafeUser);
       return true;
     } catch (err: any) {
@@ -82,8 +80,7 @@ export function UserAuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    localStorage.removeItem(USER_TOKEN_KEY);
-    setUser(null);
+    logoutMutation.mutate();
   };
 
   const wishlistIds = user?.wishlistIds ?? [];

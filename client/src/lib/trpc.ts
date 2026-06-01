@@ -11,24 +11,10 @@ export function createTRPCClient() {
       httpBatchLink({
         url: "/api/trpc",
         transformer: superjson,
-        headers() {
-          const headers: Record<string, string> = {};
-          // Admin token is handled via httpOnly cookie — do not send in headers
-          // Supplier token is stored as JSON { token, supplier } under "supplier_auth"
-          try {
-            const raw = localStorage.getItem("supplier_auth");
-            if (raw) {
-              const supplierToken = (JSON.parse(raw) as { token?: string })
-                ?.token;
-              if (supplierToken) headers["x-supplier-token"] = supplierToken;
-            }
-          } catch {
-            /* ignore malformed storage */
-          }
-          const userToken = localStorage.getItem("sindian_user_token");
-          if (userToken) headers["x-user-token"] = userToken;
-          return headers;
-        },
+        // All auth tokens are transmitted via httpOnly cookies.
+        // credentials: "include" (below) ensures cookies are sent automatically.
+        // No tokens are read from or stored in localStorage.
+        headers: () => ({}),
         fetch(url, options) {
           // Include credentials so httpOnly cookies are sent with every request
           return fetch(url, { ...options, credentials: "include" });

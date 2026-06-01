@@ -16,7 +16,6 @@ import { toast } from "sonner";
 interface CommentAuthor {
   type: "admin" | "supplier";
   id?: number;
-  token?: string;
 }
 
 interface Props {
@@ -184,11 +183,9 @@ export default function RFQComments({ rfqId, viewer, viewerName }: Props) {
         parentId: replyTo?.id,
       });
     } else {
-      if (!viewer.id || !viewer.token) return;
+      if (!viewer.id) return;
       addBySupplier.mutate({
         rfqId,
-        supplierId: viewer.id,
-        supplierToken: viewer.token,
         content: trimmed,
         parentId: replyTo?.id,
       });

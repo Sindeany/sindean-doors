@@ -9,13 +9,11 @@ import { X, Send, Package, AlertCircle, CheckCircle } from "lucide-react";
 
 interface Props {
   rfqId: number;
-  supplierId: number;
-  supplierToken: string;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export default function SupplierQuoteForm({ rfqId, supplierId, supplierToken, onClose, onSuccess }: Props) {
+export default function SupplierQuoteForm({ rfqId, onClose, onSuccess }: Props) {
   const { data: rfqData, isLoading } = trpc.rfq.getById.useQuery({ id: rfqId });
 
   const [lineItems, setLineItems] = useState<Array<{ itemIndex: number; unitPrice: number; totalPrice: number; notes: string }>>([]);
@@ -65,8 +63,6 @@ export default function SupplierQuoteForm({ rfqId, supplierId, supplierToken, on
     }
     submitMutation.mutate({
       rfqId,
-      supplierId,
-      supplierToken,
       totalPrice,
       lineItems,
       deliveryDays: deliveryDays ? Number(deliveryDays) : undefined,

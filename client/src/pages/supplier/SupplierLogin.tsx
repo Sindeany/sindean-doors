@@ -42,7 +42,7 @@ export default function SupplierLogin() {
 
   const loginMutation = trpc.suppliers.login.useMutation({
     onSuccess: (data) => {
-      login(data.token, data.supplier as any);
+      login(data.supplier as any);
       navigate("/supplier/dashboard");
     },
     onError: (err) => setError(err.message),

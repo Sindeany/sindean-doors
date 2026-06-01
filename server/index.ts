@@ -151,12 +151,14 @@ async function startServer() {
     createExpressMiddleware({
       router: appRouter,
       createContext: ({ req, res }) => ({
-        supplierToken: req.headers["x-supplier-token"] as string | undefined,
-        // Read admin token from httpOnly cookie (preferred) or header (backward compat)
+        // Admin: httpOnly cookie (preferred) or header (backward compat for tooling)
         adminToken:
           (req.cookies?.adminSession as string | undefined) ??
           (req.headers["x-admin-token"] as string | undefined),
-        userToken: req.headers["x-user-token"] as string | undefined,
+        // User and supplier: httpOnly cookies only (Batch 2 auth hardening)
+        userToken: req.cookies?.userSession as string | undefined,
+        supplierToken: req.cookies?.supplierSession as string | undefined,
+        req,
         res,
       }),
       onError({ path, error }) {

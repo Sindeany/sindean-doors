@@ -8,31 +8,18 @@ import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 import { db, schema } from "./db.js";
 import { eq, and, gt } from "drizzle-orm";
-import { t, publicProcedure, router } from "./trpc.js";
+import { publicProcedure, userProcedure, router } from "./trpc.js";
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 يوم
 
-// ── User session middleware ──────────────────────────────────────────────────
-const userProcedure = t.procedure.use(async ({ ctx, next }) => {
-  const token = (ctx as any).userToken as string | undefined;
-  if (!token) throw new TRPCError({ code: "UNAUTHORIZED", message: "يرجى تسجيل الدخول" });
-
-  const now = Date.now();
-  const session = await db.query.userSessions.findFirst({
-    where: and(
-      eq(schema.userSessions.token, token),
-      gt(schema.userSessions.expiresAt, now)
-    ),
-  });
-  if (!session) throw new TRPCError({ code: "UNAUTHORIZED", message: "انتهت الجلسة، يرجى تسجيل الدخول مجدداً" });
-
-  const user = await db.query.users.findFirst({
-    where: eq(schema.users.id, session.userId),
-  });
-  if (!user) throw new TRPCError({ code: "UNAUTHORIZED" });
-
-  return next({ ctx: { ...ctx, user } });
-});
+// ── userProcedure is centralized in server/trpc.ts (Batch 2) ─────────────────
+const USER_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: (process.env.NODE_ENV === "production" ? "strict" : "lax") as "strict" | "lax",
+  maxAge: SESSION_TTL_MS,
+  path: "/",
+};
 
 // ── Router ───────────────────────────────────────────────────────────────────
 export const usersRouter = router({
@@ -45,7 +32,7 @@ export const usersRouter = router({
       phone: z.string().min(10, "رقم الجوال غير صحيح"),
       password: z.string().min(8, "كلمة المرور يجب أن تكون 8 أحرف على الأقل"),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const existing = await db.query.users.findFirst({
         where: eq(schema.users.email, input.email),
       });
@@ -72,7 +59,8 @@ export const usersRouter = router({
         createdAt: now,
       });
 
-      return { token, user: { id: userId, name: input.name, email: input.email, phone: input.phone, wishlistIds: [] } };
+      ctx.res!.cookie("userSession", token, USER_COOKIE_OPTIONS);
+      return { user: { id: userId, name: input.name, email: input.email, phone: input.phone, wishlistIds: [] } };
     }),
 
   // ── تسجيل الدخول ────────────────────────────────────────────────────────
@@ -81,7 +69,7 @@ export const usersRouter = router({
       email: z.string().email(),
       password: z.string().min(1),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const user = await db.query.users.findFirst({
         where: eq(schema.users.email, input.email),
       });
@@ -100,7 +88,8 @@ export const usersRouter = router({
       });
 
       const { passwordHash: _, ...safeUser } = user;
-      return { token, user: safeUser };
+      ctx.res!.cookie("userSession", token, USER_COOKIE_OPTIONS);
+      return { user: safeUser };
     }),
 
   // ── بيانات المستخدم الحالي ──────────────────────────────────────────────
@@ -111,7 +100,8 @@ export const usersRouter = router({
 
   // ── تسجيل الخروج ────────────────────────────────────────────────────────
   logout: userProcedure.mutation(async ({ ctx }) => {
-    const token = (ctx as any).userToken as string;
+    const token = ctx.userToken!;
+    ctx.res!.clearCookie("userSession", { path: "/" });
     await db.delete(schema.userSessions).where(eq(schema.userSessions.token, token));
     return { success: true };
   }),

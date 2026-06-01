@@ -13,7 +13,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 import { db, schema } from "./db.js";
 import { eq, and, desc } from "drizzle-orm";
-import { publicProcedure, adminProcedure, router } from "./trpc.js";
+import { publicProcedure, adminProcedure, supplierProcedure, router } from "./trpc.js";
 
 // ── Notification helper ───────────────────────────────────────────────────────
 async function notifyAdminAboutComment(rfqNumber: string, authorName: string, content: string) {
@@ -107,31 +107,20 @@ export const commentsRouter = router({
     }),
 
   // ── إضافة تعليق من المورد ──────────────────────────────────────────────────
-  addBySupplier: publicProcedure
+  addBySupplier: supplierProcedure
     .input(z.object({
       rfqId: z.number(),
-      supplierId: z.number(),
-      supplierToken: z.string(),
       content: z.string().min(1).max(2000),
       parentId: z.number().optional(),
     }))
-    .mutation(async ({ input }) => {
-      // التحقق من صحة الجلسة
-      const session = await db.query.supplierSessions.findFirst({
-        where: and(
-          eq(schema.supplierSessions.token, input.supplierToken),
-          eq(schema.supplierSessions.supplierId, input.supplierId)
-        ),
-      });
-      if (!session || session.expiresAt < Date.now()) {
-        throw new TRPCError({ code: "UNAUTHORIZED", message: "انتهت الجلسة، يرجى تسجيل الدخول مجدداً" });
-      }
+    .mutation(async ({ input, ctx }) => {
+      const supplierId = (ctx as any).supplier.id as number;
 
       // التحقق من وجود دعوة للمورد في هذا الـ RFQ
       const invitation = await db.query.rfqInvitations.findFirst({
         where: and(
           eq(schema.rfqInvitations.rfqId, input.rfqId),
-          eq(schema.rfqInvitations.supplierId, input.supplierId)
+          eq(schema.rfqInvitations.supplierId, supplierId)
         ),
       });
       if (!invitation) {
@@ -139,7 +128,7 @@ export const commentsRouter = router({
       }
 
       const supplier = await db.query.suppliers.findFirst({
-        where: eq(schema.suppliers.id, input.supplierId),
+        where: eq(schema.suppliers.id, supplierId),
       });
       if (!supplier || supplier.status !== "active") {
         throw new TRPCError({ code: "FORBIDDEN", message: "حسابك غير مفعّل" });
@@ -153,16 +142,15 @@ export const commentsRouter = router({
       const [result] = await db.insert(schema.rfqComments).values({
         rfqId: input.rfqId,
         authorType: "supplier",
-        authorId: input.supplierId,
+        authorId: supplierId,
         authorName: supplier.companyName,
         content: input.content.trim(),
-        isInternal: 0, // الموردون لا يمكنهم إنشاء تعليقات داخلية
+        isInternal: 0,
         parentId: input.parentId || null,
         createdAt: now,
         updatedAt: now,
       });
 
-      // إشعار الإدارة (non-blocking)
       if (rfq) {
         notifyAdminAboutComment(
           rfq.rfqNumber,

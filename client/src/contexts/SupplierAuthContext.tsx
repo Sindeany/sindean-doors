@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, { createContext, useContext, useState, ReactNode } from "react";
+import { trpc } from "@/lib/trpc";
 
 interface SupplierProfile {
   id: number;
@@ -20,50 +21,37 @@ interface SupplierProfile {
 
 interface SupplierAuthContextType {
   supplier: SupplierProfile | null;
-  token: string | null;
   isLoading: boolean;
-  login: (token: string, supplier: SupplierProfile) => void;
+  login: (supplier: SupplierProfile) => void;
   logout: () => void;
 }
 
 const SupplierAuthContext = createContext<SupplierAuthContextType | null>(null);
 
-const STORAGE_KEY = "supplier_auth";
-
 export function SupplierAuthProvider({ children }: { children: ReactNode }) {
   const [supplier, setSupplier] = useState<SupplierProfile | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const { token: t, supplier: s } = JSON.parse(stored);
-        setToken(t);
-        setSupplier(s);
-      }
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  // استعادة الجلسة عند تحميل الصفحة عبر httpOnly cookie
+  const { isLoading } = trpc.suppliers.me.useQuery(undefined, {
+    retry: false,
+    onSuccess: (data: any) => setSupplier(data as SupplierProfile),
+    onError: () => setSupplier(null),
+  } as any);
 
-  const login = (newToken: string, newSupplier: SupplierProfile) => {
-    setToken(newToken);
+  const logoutMutation = trpc.suppliers.logout.useMutation({
+    onSettled: () => setSupplier(null),
+  });
+
+  const login = (newSupplier: SupplierProfile) => {
     setSupplier(newSupplier);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ token: newToken, supplier: newSupplier }));
   };
 
   const logout = () => {
-    setToken(null);
-    setSupplier(null);
-    localStorage.removeItem(STORAGE_KEY);
+    logoutMutation.mutate();
   };
 
   return (
-    <SupplierAuthContext.Provider value={{ supplier, token, isLoading, login, logout }}>
+    <SupplierAuthContext.Provider value={{ supplier, isLoading, login, logout }}>
       {children}
     </SupplierAuthContext.Provider>
   );

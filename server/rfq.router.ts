@@ -7,7 +7,7 @@ import { z } from "zod/v4";
 import { db, schema } from "./db.js";
 import { eq, and, inArray } from "drizzle-orm";
 import { invokeLLM } from "./llm.js";
-import { t, publicProcedure, adminProcedure, router } from "./trpc.js";
+import { t, publicProcedure, adminProcedure, supplierProcedure, router } from "./trpc.js";
 
 // ── Zod Schemas ──────────────────────────────────────────────────────────────
 const rfqItemSchema = z.object({
@@ -182,11 +182,9 @@ export const rfqRouter = router({
     }),
 
   // ── تقديم عرض سعر (من المورد) ───────────────────────────────────────────
-  submitQuote: publicProcedure
+  submitQuote: supplierProcedure
     .input(z.object({
       rfqId: z.number(),
-      supplierId: z.number(),
-      supplierToken: z.string(),
       totalPrice: z.number().min(0),
       lineItems: z.array(lineItemSchema),
       deliveryDays: z.number().optional(),
@@ -196,17 +194,8 @@ export const rfqRouter = router({
       notes: z.string().optional(),
       technicalNotes: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
-      // التحقق من صحة الـ token
-      const session = await db.query.supplierSessions.findFirst({
-        where: and(
-          eq(schema.supplierSessions.token, input.supplierToken),
-          eq(schema.supplierSessions.supplierId, input.supplierId)
-        ),
-      });
-      if (!session || session.expiresAt < Date.now()) {
-        throw new TRPCError({ code: "UNAUTHORIZED" });
-      }
+    .mutation(async ({ input, ctx }) => {
+      const supplierId = (ctx as any).supplier.id as number;
 
       const rfq = await db.query.rfqs.findFirst({ where: eq(schema.rfqs.id, input.rfqId) });
       if (!rfq) throw new TRPCError({ code: "NOT_FOUND" });
@@ -221,7 +210,7 @@ export const rfqRouter = router({
       const existingQuote = await db.query.supplierQuotes.findFirst({
         where: and(
           eq(schema.supplierQuotes.rfqId, input.rfqId),
-          eq(schema.supplierQuotes.supplierId, input.supplierId)
+          eq(schema.supplierQuotes.supplierId, supplierId)
         ),
       });
 
@@ -246,7 +235,7 @@ export const rfqRouter = router({
           .set({ status: "submitted", respondedAt: now })
           .where(and(
             eq(schema.rfqInvitations.rfqId, input.rfqId),
-            eq(schema.rfqInvitations.supplierId, input.supplierId)
+            eq(schema.rfqInvitations.supplierId, supplierId)
           ));
 
         return { success: true, quoteId: existingQuote.id, updated: true };
@@ -254,7 +243,7 @@ export const rfqRouter = router({
 
       const [result] = await db.insert(schema.supplierQuotes).values({
         rfqId: input.rfqId,
-        supplierId: input.supplierId,
+        supplierId,
         quoteNumber,
         totalPrice: input.totalPrice,
         lineItems: input.lineItems,
@@ -274,15 +263,15 @@ export const rfqRouter = router({
         .set({ status: "submitted", respondedAt: now })
         .where(and(
           eq(schema.rfqInvitations.rfqId, input.rfqId),
-          eq(schema.rfqInvitations.supplierId, input.supplierId)
+          eq(schema.rfqInvitations.supplierId, supplierId)
         ));
 
       // تحديث إحصائيات المورد
-      const supplier = await db.query.suppliers.findFirst({ where: eq(schema.suppliers.id, input.supplierId) });
-      if (supplier) {
+      const supplierRow = await db.query.suppliers.findFirst({ where: eq(schema.suppliers.id, supplierId) });
+      if (supplierRow) {
         await db.update(schema.suppliers)
-          .set({ totalQuotes: (supplier.totalQuotes || 0) + 1, updatedAt: now })
-          .where(eq(schema.suppliers.id, input.supplierId));
+          .set({ totalQuotes: (supplierRow.totalQuotes || 0) + 1, updatedAt: now })
+          .where(eq(schema.suppliers.id, supplierId));
       }
 
       // إشعار الإدارة
@@ -541,25 +530,14 @@ ${i + 1}. ${q.supplierName}
     }),
 
   // ── تحديث حالة الدعوة (قبول/رفض من المورد) ─────────────────────────────
-  respondToInvitation: publicProcedure
+  respondToInvitation: supplierProcedure
     .input(z.object({
       invitationId: z.number(),
-      supplierId: z.number(),
-      supplierToken: z.string(),
       response: z.enum(["accepted", "declined"]),
       declineReason: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
-      // التحقق من الـ token
-      const session = await db.query.supplierSessions.findFirst({
-        where: and(
-          eq(schema.supplierSessions.token, input.supplierToken),
-          eq(schema.supplierSessions.supplierId, input.supplierId)
-        ),
-      });
-      if (!session || session.expiresAt < Date.now()) {
-        throw new TRPCError({ code: "UNAUTHORIZED" });
-      }
+    .mutation(async ({ input, ctx }) => {
+      const supplierId = (ctx as any).supplier.id as number;
 
       await db.update(schema.rfqInvitations)
         .set({
@@ -570,32 +548,24 @@ ${i + 1}. ${q.supplierName}
         })
         .where(and(
           eq(schema.rfqInvitations.id, input.invitationId),
-          eq(schema.rfqInvitations.supplierId, input.supplierId)
+          eq(schema.rfqInvitations.supplierId, supplierId)
         ));
       return { success: true };
     }),
 
   // ── تحديث حالة الدعوة إلى "viewed" ─────────────────────────────────────
-  markInvitationViewed: publicProcedure
+  markInvitationViewed: supplierProcedure
     .input(z.object({
       invitationId: z.number(),
-      supplierId: z.number(),
-      supplierToken: z.string(),
     }))
-    .mutation(async ({ input }) => {
-      const session = await db.query.supplierSessions.findFirst({
-        where: and(
-          eq(schema.supplierSessions.token, input.supplierToken),
-          eq(schema.supplierSessions.supplierId, input.supplierId)
-        ),
-      });
-      if (!session || session.expiresAt < Date.now()) return { success: false };
+    .mutation(async ({ input, ctx }) => {
+      const supplierId = (ctx as any).supplier.id as number;
 
       await db.update(schema.rfqInvitations)
         .set({ status: "viewed", viewedAt: Date.now() })
         .where(and(
           eq(schema.rfqInvitations.id, input.invitationId),
-          eq(schema.rfqInvitations.supplierId, input.supplierId),
+          eq(schema.rfqInvitations.supplierId, supplierId),
           eq(schema.rfqInvitations.status, "sent")
         ));
       return { success: true };

@@ -35,30 +35,25 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 export default function SupplierDashboard() {
   const [, navigate] = useLocation();
-  const { supplier, token, logout } = useSupplierAuth();
+  const { supplier, isLoading, logout } = useSupplierAuth();
   const [selectedRfqId, setSelectedRfqId] = useState<number | null>(null);
   const [selectedInvitationId, setSelectedInvitationId] = useState<number | null>(null);
   const [showQuoteForm, setShowQuoteForm] = useState(false);
 
   useEffect(() => {
-    if (!supplier || !token) navigate("/supplier/login");
-  }, [supplier, token]);
-
-  const logoutMutation = trpc.suppliers.logout.useMutation({
-    onSettled: () => { logout(); navigate("/supplier/login"); },
-  });
+    if (!isLoading && !supplier) navigate("/supplier/login");
+  }, [supplier, isLoading]);
 
   const { data: invitations, refetch: refetchInvitations } = trpc.suppliers.myInvitations.useQuery(undefined, {
-    enabled: !!token,
-    // Pass token via headers — handled in trpc client
+    enabled: !!supplier,
   });
 
   const { data: quotes, refetch: refetchQuotes } = trpc.suppliers.myQuotes.useQuery(undefined, {
-    enabled: !!token,
+    enabled: !!supplier,
   });
 
   const { data: purchaseOrders, refetch: refetchPOs } = trpc.suppliers.myPurchaseOrders.useQuery(undefined, {
-    enabled: !!token,
+    enabled: !!supplier,
   });
 
   const confirmPOMutation = trpc.suppliers.confirmPurchaseOrder.useMutation({
@@ -82,12 +77,8 @@ export default function SupplierDashboard() {
   const handleOpenRFQ = (inv: any) => {
     setSelectedRfqId(inv.rfqId);
     setSelectedInvitationId(inv.id);
-    if (inv.status === "sent" && token && supplier) {
-      markViewedMutation.mutate({
-        invitationId: inv.id,
-        supplierId: supplier.id,
-        supplierToken: token,
-      });
+    if (inv.status === "sent" && supplier) {
+      markViewedMutation.mutate({ invitationId: inv.id });
     }
   };
 
@@ -119,7 +110,7 @@ export default function SupplierDashboard() {
               variant="ghost"
               size="sm"
               className="text-white hover:bg-amber-800"
-              onClick={() => logoutMutation.mutate()}
+              onClick={() => { logout(); navigate("/supplier/login"); }}
             >
               <LogOut className="w-4 h-4 ml-1" />
               خروج
@@ -294,7 +285,6 @@ export default function SupplierDashboard() {
                       viewer={{
                         type: "supplier",
                         id: supplier?.id,
-                        token: token || undefined,
                       }}
                       viewerName={supplier?.companyName}
                     />
@@ -423,11 +413,9 @@ export default function SupplierDashboard() {
       </div>
 
       {/* Quote Form Modal */}
-      {showQuoteForm && selectedRfqId && selectedInvitationId && supplier && token && (
+      {showQuoteForm && selectedRfqId && selectedInvitationId && supplier && (
         <SupplierQuoteForm
           rfqId={selectedRfqId}
-          supplierId={supplier.id}
-          supplierToken={token}
           onClose={() => setShowQuoteForm(false)}
           onSuccess={() => {
             setShowQuoteForm(false);

@@ -8,32 +8,16 @@ import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 import { db, schema } from "./db.js";
 import { eq, and, gt } from "drizzle-orm";
-import { t, publicProcedure, adminProcedure, router } from "./trpc.js";
+import { publicProcedure, adminProcedure, supplierProcedure, router } from "./trpc.js";
 
-// ── Middleware: استخراج المورد من الـ token ──────────────────────────────────
-async function getSupplierFromToken(token: string | undefined) {
-  if (!token) throw new TRPCError({ code: "UNAUTHORIZED", message: "يرجى تسجيل الدخول" });
-  const now = Date.now();
-  const session = await db.query.supplierSessions.findFirst({
-    where: and(
-      eq(schema.supplierSessions.token, token),
-      gt(schema.supplierSessions.expiresAt, now)
-    ),
-  });
-  if (!session) throw new TRPCError({ code: "UNAUTHORIZED", message: "انتهت صلاحية الجلسة" });
-  const supplier = await db.query.suppliers.findFirst({
-    where: eq(schema.suppliers.id, session.supplierId),
-  });
-  if (!supplier) throw new TRPCError({ code: "UNAUTHORIZED" });
-  return supplier;
-}
-
-// ── Supplier Auth Procedure ──────────────────────────────────────────────────
-const supplierProcedure = t.procedure.use(async ({ ctx, next }) => {
-  const token = (ctx as any).supplierToken as string | undefined;
-  const supplier = await getSupplierFromToken(token);
-  return next({ ctx: { ...ctx, supplier } });
-});
+// ── supplierProcedure is centralized in server/trpc.ts (Batch 2) ─────────────
+const SUPPLIER_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: (process.env.NODE_ENV === "production" ? "strict" : "lax") as "strict" | "lax",
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+  path: "/",
+};
 
 // ── Router ───────────────────────────────────────────────────────────────────
 export const suppliersRouter = router({
@@ -87,7 +71,7 @@ export const suppliersRouter = router({
       email: z.string().email(),
       password: z.string().min(1),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const supplier = await db.query.suppliers.findFirst({
         where: eq(schema.suppliers.email, input.email),
       });
@@ -109,13 +93,15 @@ export const suppliersRouter = router({
       });
 
       const { passwordHash: _, ...safeSupplier } = supplier;
-      return { token, supplier: safeSupplier };
+      ctx.res!.cookie("supplierSession", token, SUPPLIER_COOKIE_OPTIONS);
+      return { supplier: safeSupplier };
     }),
 
   // ── تسجيل الخروج ────────────────────────────────────────────────────────
   logout: supplierProcedure
     .mutation(async ({ ctx }) => {
-      const token = (ctx as any).supplierToken as string;
+      const token = ctx.supplierToken!;
+      ctx.res!.clearCookie("supplierSession", { path: "/" });
       await db.delete(schema.supplierSessions).where(eq(schema.supplierSessions.token, token));
       return { success: true };
     }),
