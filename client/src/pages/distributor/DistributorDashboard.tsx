@@ -1,9 +1,11 @@
 // ============================================================
 // Distributor Dashboard - Sindian Doors
 // Design: Architectural Luxury | KPI cards + charts + recent orders
+// Batch 4-b: KPI cards + charts + statusSummary ← myStats (real data)
 // ============================================================
 
 import { useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { useDistributorAuth } from "@/contexts/DistributorAuthContext";
 import DistributorLayout from "@/components/distributor/DistributorLayout";
@@ -12,7 +14,7 @@ import BulkOrderUpload from "@/components/distributor/BulkOrderUpload";
 import ProjectFilesUpload from "@/components/distributor/ProjectFilesUpload";
 import {
   mockOrders,
-  monthlySalesData,
+  // monthlySalesData حُذف — الرسمان يستخدمان stats?.monthly (Batch 4-b)
   orderStatusConfig,
   paymentStatusConfig,
   tierConfig,
@@ -45,20 +47,30 @@ export default function DistributorDashboard() {
 
   const tier = tierConfig[distributor.tier];
 
-  const totalRevenue = mockOrders.filter((o) => o.status !== "cancelled").reduce((s, o) => s + o.totalAmount, 0);
-  const thisMonthRevenue = mockOrders.filter((o) => o.date.startsWith("2026-04")).reduce((s, o) => s + o.totalAmount, 0);
-  const pendingOrders = mockOrders.filter((o) => ["pending", "confirmed", "manufacturing"].includes(o.status)).length;
-  const deliveredOrders = mockOrders.filter((o) => o.status === "delivered").length;
+  // ── Batch 4-b: إحصائيات حقيقية من myStats ──────────────────────────────
+  const { data: stats, isLoading: statsLoading, isError: statsError } =
+    trpc.distributors.myStats.useQuery(undefined, { retry: false });
 
-  const recentOrders = mockOrders.slice(0, 5);
+  const totalRevenue    = stats?.totalRevenue    ?? 0;
+  const thisMonthRevenue = stats?.thisMonthRevenue ?? 0;
+  const pendingOrders   = stats?.activeOrders     ?? 0;
+  const deliveredOrders = stats?.deliveredOrders  ?? 0;
+  const growthPct       = stats?.revenueGrowthPct ?? 0;
+  // تنسيق نسبة النمو مع إشارة + إن كانت موجبة
+  const growthLabel = growthPct > 0 ? `+${growthPct}%` : growthPct < 0 ? `${growthPct}%` : "—";
+
+  // الرسمان يستخدمان stats?.monthly — حقل month (عربي) متوافق مع XAxis الحالي
+  const monthlyChartData = stats?.monthly ?? [];
+
+  const recentOrders = mockOrders.slice(0, 5); // 4-ج: سيُستبدل بـ myOrders
 
   const kpis = [
     {
       label: dir === "rtl" ? "إجمالي المبيعات" : "Total Sales",
       value: `${(totalRevenue / 1000).toFixed(1)}K`,
       unit: dir === "rtl" ? "ر.س" : "SAR",
-      change: "+18%",
-      positive: true,
+      change: growthLabel,
+      positive: growthPct >= 0,
       icon: DollarSign,
       color: "oklch(0.38 0.06 160)",
       bg: "oklch(0.96 0.01 160)",
@@ -67,7 +79,7 @@ export default function DistributorDashboard() {
       label: dir === "rtl" ? "مبيعات هذا الشهر" : "This Month's Sales",
       value: `${(thisMonthRevenue / 1000).toFixed(1)}K`,
       unit: dir === "rtl" ? "ر.س" : "SAR",
-      change: "+24%",
+      change: growthLabel,
       positive: true,
       icon: TrendingUp,
       color: "oklch(0.68 0.10 60)",
@@ -95,12 +107,16 @@ export default function DistributorDashboard() {
     },
   ];
 
+  // ── Batch 4-b: حالات الطلبات من statusCounts الحقيقي ──────────────────
+  const sc = stats?.statusCounts ?? {};
   const statusSummary = [
-    { label: dir === "rtl" ? "في الانتظار" : "Pending", count: mockOrders.filter((o) => o.status === "pending").length, icon: Clock, color: "#d97706" },
-    { label: dir === "rtl" ? "قيد التصنيع" : "Manufacturing", count: mockOrders.filter((o) => o.status === "manufacturing").length, icon: AlertCircle, color: "#7c3aed" },
-    { label: dir === "rtl" ? "تم الشحن" : "Shipped", count: mockOrders.filter((o) => o.status === "shipped").length, icon: Truck, color: "#0891b2" },
-    { label: dir === "rtl" ? "تم التسليم" : "Delivered", count: mockOrders.filter((o) => o.status === "delivered").length, icon: CheckCircle2, color: "#059669" },
+    { label: dir === "rtl" ? "في الانتظار"  : "Pending",       count: sc["pending"]       ?? 0, icon: Clock,        color: "#d97706" },
+    { label: dir === "rtl" ? "قيد التصنيع" : "Manufacturing",  count: sc["manufacturing"] ?? 0, icon: AlertCircle,  color: "#7c3aed" },
+    { label: dir === "rtl" ? "تم الشحن"     : "Shipped",        count: sc["shipped"]       ?? 0, icon: Truck,        color: "#0891b2" },
+    { label: dir === "rtl" ? "تم التسليم"   : "Delivered",      count: sc["delivered"]     ?? 0, icon: CheckCircle2, color: "#059669" },
   ];
+  // المجموع للنسب المئوية في شريط التقدم — minimum 1 لتجنّب القسمة على صفر
+  const totalStatusCount = Object.values(sc).reduce((a, b) => a + b, 0) || 1;
 
   const tableHeaders = dir === "rtl"
     ? ["رقم الطلب", "التاريخ", "المبلغ", "حالة الطلب", "الدفع", ""]
@@ -194,24 +210,34 @@ export default function DistributorDashboard() {
                 {dir === "rtl" ? "بالريال السعودي" : "In SAR"}
               </span>
             </div>
-            <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={monthlySalesData}>
-                <defs>
-                  <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="oklch(0.38 0.06 160)" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="oklch(0.38 0.06 160)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} />
-                <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} tickFormatter={(v) => `${v / 1000}K`} />
-                <Tooltip
-                  formatter={(v: number) => [`${v.toLocaleString()} ${dir === "rtl" ? "ر.س" : "SAR"}`, dir === "rtl" ? "الإيراد" : "Revenue"]}
-                  contentStyle={{ fontFamily: "IBM Plex Sans Arabic, sans-serif", borderRadius: "8px" }}
-                />
-                <Area type="monotone" dataKey="revenue" stroke="oklch(0.38 0.06 160)" strokeWidth={2.5} fill="url(#revenueGrad)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            {statsLoading ? (
+              <div className="h-[200px] flex items-center justify-center text-gray-300 text-sm">
+                {dir === "rtl" ? "جارٍ التحميل…" : "Loading…"}
+              </div>
+            ) : statsError ? (
+              <div className="h-[200px] flex items-center justify-center text-red-400 text-sm">
+                {dir === "rtl" ? "تعذّر تحميل الإحصاءات" : "Could not load stats"}
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={monthlyChartData}>
+                  <defs>
+                    <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="oklch(0.38 0.06 160)" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="oklch(0.38 0.06 160)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} />
+                  <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} tickFormatter={(v) => `${v / 1000}K`} />
+                  <Tooltip
+                    formatter={(v: number) => [`${v.toLocaleString()} ${dir === "rtl" ? "ر.س" : "SAR"}`, dir === "rtl" ? "الإيراد" : "Revenue"]}
+                    contentStyle={{ fontFamily: "IBM Plex Sans Arabic, sans-serif", borderRadius: "8px" }}
+                  />
+                  <Area type="monotone" dataKey="revenue" stroke="oklch(0.38 0.06 160)" strokeWidth={2.5} fill="url(#revenueGrad)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
 
           {/* Orders by status */}
@@ -232,30 +258,30 @@ export default function DistributorDashboard() {
                       <span className="font-bold" style={{ color: "oklch(0.25 0.04 160)" }}>{count}</span>
                     </div>
                     <div className="h-1.5 bg-gray-100 rounded-full">
-                      <div className="h-full rounded-full" style={{ width: `${(count / mockOrders.length) * 100}%`, background: color }} />
+                      <div className="h-full rounded-full" style={{ width: `${(count / totalStatusCount) * 100}%`, background: color }} />
                     </div>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Units bar chart */}
+            {/* Orders bar chart — Batch 4-b: dataKey="orders" من stats?.monthly */}
             <div className="mt-6 pt-4 border-t border-gray-100">
-              <p className="text-xs text-gray-400 mb-3">{dir === "rtl" ? "الوحدات المباعة شهرياً" : "Units sold monthly"}</p>
+              <p className="text-xs text-gray-400 mb-3">{dir === "rtl" ? "عدد الطلبات الشهرية" : "Monthly orders count"}</p>
               <ResponsiveContainer width="100%" height={80}>
-                <BarChart data={monthlySalesData} barSize={16}>
-                  <Bar dataKey="units" radius={[4, 4, 0, 0]}>
-                    {monthlySalesData.map((_, i) => (
+                <BarChart data={monthlyChartData} barSize={16}>
+                  <Bar dataKey="orders" radius={[4, 4, 0, 0]}>
+                    {monthlyChartData.map((_, i) => (
                       <Cell
                         key={i}
-                        fill={i === monthlySalesData.length - 1 ? "oklch(0.68 0.10 60)" : "oklch(0.38 0.06 160)"}
-                        opacity={i === monthlySalesData.length - 1 ? 1 : 0.5}
+                        fill={i === monthlyChartData.length - 1 ? "oklch(0.68 0.10 60)" : "oklch(0.38 0.06 160)"}
+                        opacity={i === monthlyChartData.length - 1 ? 1 : 0.5}
                       />
                     ))}
                   </Bar>
                   <XAxis dataKey="month" tick={{ fontSize: 9, fill: "#9ca3af" }} />
                   <Tooltip
-                    formatter={(v: number) => [`${v} ${dir === "rtl" ? "وحدة" : "units"}`, dir === "rtl" ? "المبيعات" : "Sales"]}
+                    formatter={(v: number) => [`${v} ${dir === "rtl" ? "طلب" : "orders"}`, dir === "rtl" ? "الطلبات" : "Orders"]}
                     contentStyle={{ fontFamily: "IBM Plex Sans Arabic, sans-serif", borderRadius: "8px", fontSize: "12px" }}
                   />
                 </BarChart>
