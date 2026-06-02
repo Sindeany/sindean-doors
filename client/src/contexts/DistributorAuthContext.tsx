@@ -15,10 +15,14 @@ interface DistributorAuthContextType {
   logout: () => void;
 }
 
-const DistributorAuthContext = createContext<DistributorAuthContextType | null>(null);
+const DistributorAuthContext = createContext<DistributorAuthContextType | null>(
+  null
+);
 
 export function DistributorAuthProvider({ children }: { children: ReactNode }) {
-  const [distributor, setDistributor] = useState<DistributorProfile | null>(null);
+  const [distributor, setDistributor] = useState<DistributorProfile | null>(
+    null
+  );
 
   // استعادة الجلسة عند تحميل الصفحة عبر httpOnly cookie
   const { isLoading } = trpc.distributors.me.useQuery(undefined, {
@@ -43,7 +47,13 @@ export function DistributorAuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <DistributorAuthContext.Provider
-      value={{ distributor, isAuthenticated: !!distributor, isLoading, login, logout }}
+      value={{
+        distributor,
+        isAuthenticated: !!distributor,
+        isLoading,
+        login,
+        logout,
+      }}
     >
       {children}
     </DistributorAuthContext.Provider>
@@ -52,6 +62,9 @@ export function DistributorAuthProvider({ children }: { children: ReactNode }) {
 
 export function useDistributorAuth() {
   const ctx = useContext(DistributorAuthContext);
-  if (!ctx) throw new Error("useDistributorAuth must be used inside DistributorAuthProvider");
+  if (!ctx)
+    throw new Error(
+      "useDistributorAuth must be used inside DistributorAuthProvider"
+    );
   return ctx;
 }
