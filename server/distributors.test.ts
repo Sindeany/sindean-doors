@@ -3,7 +3,7 @@
  * اختبارات مصادقة الموزّع (Batch 3-b)
  * تغطي: login (صحيح، خاطئ، بدون passwordHash، حالة غير مفعّلة) + logout + me
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import bcrypt from "bcryptjs";
 
 // ── منطق التحقق (محاكاة router) ──────────────────────────────────────────────
@@ -79,7 +79,7 @@ async function simulateLogin(
   return { success: true, distributorId: db.id };
 }
 
-function toProfile(d: MockDistributor) {
+function toProfile(d: MockDistributor, creditUsed = 0) {
   return {
     id: String(d.id),
     name: d.name,
@@ -89,10 +89,113 @@ function toProfile(d: MockDistributor) {
     tier: d.tier,
     discount: d.discountRate,
     creditLimit: d.creditLimit,
-    creditUsed: 0,
+    creditUsed,
     joinDate: d.joinDate,
     salesRep: "",
   };
+}
+
+// ── محاكاة لمنطق myStats و myOrders و creditUsed (Batch 4-a) ─────────────
+// ملاحظة: هذه الاختبارات تحاكي المنطق فقط ولا تستدعي الـ endpoint الفعلي.
+// اختبارات العزل الحقيقية ستتم يدوياً أو لاحقاً باستخدام بيئة DB كاملة (Mock Context).
+
+type OrderStatus = "draft" | "pending" | "confirmed" | "manufacturing" | "shipped" | "delivered" | "cancelled";
+type PaymentStatus = "unpaid" | "partial" | "paid";
+
+interface MockOrder {
+  id: number;
+  distributorId: string; // Varchar in DB
+  totalAmount: number;
+  status: OrderStatus;
+  paymentStatus: PaymentStatus;
+  createdAt: number;
+  items: string; // JSON string
+}
+
+const mockOrdersDb: MockOrder[] = [];
+
+function simulateMyStats(distId: number) {
+  const distIdStr = String(distId);
+  const allOrders = mockOrdersDb.filter((o) => o.distributorId === distIdStr);
+
+  const totalRevenue = allOrders.reduce((s, o) => s + (o.totalAmount ?? 0), 0);
+  const totalOrders = allOrders.length;
+  const activeOrders = allOrders.filter(
+    (o) => o.status !== "delivered" && o.status !== "cancelled",
+  ).length;
+  const deliveredOrders = allOrders.filter(
+    (o) => o.status === "delivered",
+  ).length;
+
+  const now = new Date();
+  const thisMonthStart = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    1,
+  ).getTime();
+  const lastMonthStart = new Date(
+    now.getFullYear(),
+    now.getMonth() - 1,
+    1,
+  ).getTime();
+
+  const thisMonthRevenue = allOrders
+    .filter((o) => o.createdAt >= thisMonthStart)
+    .reduce((s, o) => s + (o.totalAmount ?? 0), 0);
+  const lastMonthRevenue = allOrders
+    .filter(
+      (o) => o.createdAt >= lastMonthStart && o.createdAt < thisMonthStart,
+    )
+    .reduce((s, o) => s + (o.totalAmount ?? 0), 0);
+
+  const revenueGrowthPct =
+    lastMonthRevenue > 0
+      ? Math.round(
+          ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100,
+        )
+      : 0;
+
+  const statusCounts: Record<string, number> = {};
+  for (const o of allOrders) {
+    statusCounts[o.status] = (statusCounts[o.status] ?? 0) + 1;
+  }
+
+  return {
+    totalRevenue,
+    totalOrders,
+    activeOrders,
+    deliveredOrders,
+    thisMonthRevenue,
+    lastMonthRevenue,
+    revenueGrowthPct,
+    statusCounts,
+  };
+}
+
+function simulateMyOrders(distId: number, filterStatus?: OrderStatus) {
+  const distIdStr = String(distId);
+  let orders = mockOrdersDb.filter((o) => o.distributorId === distIdStr);
+  if (filterStatus) {
+    orders = orders.filter((o) => o.status === filterStatus);
+  }
+  return orders.map((o) => ({
+    ...o,
+    items: (() => {
+      try {
+        return JSON.parse(o.items);
+      } catch {
+        return [];
+      }
+    })(),
+  }));
+}
+
+function simulateCreditUsed(distId: number) {
+  const distIdStr = String(distId);
+  const unpaidOrders = mockOrdersDb.filter(
+    (o) => o.distributorId === distIdStr && o.paymentStatus !== "paid",
+  );
+  return unpaidOrders.reduce((s, o) => s + (o.totalAmount ?? 0), 0);
 }
 
 // ── بيانات الاختبار ───────────────────────────────────────────────────────────
@@ -304,7 +407,115 @@ describe("Distributor me — تحويل البيانات", () => {
       creditLimit: 300000,
       joinDate: "2024-01-01",
     };
-    const profile = toProfile(mockDist);
-    expect(profile.creditUsed).toBe(0);
+    const profile = toProfile(mockDist, 15000);
+    expect(profile.creditUsed).toBe(15000);
+  });
+});
+
+describe("Distributor creditUsed — حساب الرصيد المستخدم", () => {
+  beforeEach(() => {
+    mockOrdersDb.length = 0;
+  });
+
+  it("يحسب مجموع الطلبات غير المدفوعة بالكامل فقط", () => {
+    mockOrdersDb.push(
+      { id: 1, distributorId: "1", totalAmount: 1000, paymentStatus: "unpaid", status: "pending", createdAt: Date.now(), items: "[]" },
+      { id: 2, distributorId: "1", totalAmount: 500, paymentStatus: "partial", status: "manufacturing", createdAt: Date.now(), items: "[]" },
+      { id: 3, distributorId: "1", totalAmount: 2000, paymentStatus: "paid", status: "delivered", createdAt: Date.now(), items: "[]" }
+    );
+    const creditUsed = simulateCreditUsed(1);
+    expect(creditUsed).toBe(1500); // 1000 + 500
+  });
+
+  it("يُرجع 0 إذا كانت كل الطلبات مدفوعة أو لا توجد طلبات", () => {
+    const creditUsedEmpty = simulateCreditUsed(2);
+    expect(creditUsedEmpty).toBe(0);
+
+    mockOrdersDb.push(
+      { id: 4, distributorId: "2", totalAmount: 3000, paymentStatus: "paid", status: "delivered", createdAt: Date.now(), items: "[]" }
+    );
+    const creditUsedPaid = simulateCreditUsed(2);
+    expect(creditUsedPaid).toBe(0);
+  });
+});
+
+describe("Distributor myStats — حساب الإحصائيات", () => {
+  beforeEach(() => {
+    mockOrdersDb.length = 0;
+  });
+
+  it("يحسب totalRevenue وtotalOrders وactiveOrders صحيحاً لموزّع له طلبات", () => {
+    mockOrdersDb.push(
+      { id: 1, distributorId: "1", totalAmount: 1000, status: "pending", paymentStatus: "unpaid", createdAt: Date.now(), items: "[]" },
+      { id: 2, distributorId: "1", totalAmount: 2000, status: "delivered", paymentStatus: "paid", createdAt: Date.now(), items: "[]" },
+      { id: 3, distributorId: "1", totalAmount: 500, status: "cancelled", paymentStatus: "unpaid", createdAt: Date.now(), items: "[]" },
+      { id: 4, distributorId: "2", totalAmount: 5000, status: "pending", paymentStatus: "unpaid", createdAt: Date.now(), items: "[]" } // موزّع آخر
+    );
+    const stats = simulateMyStats(1);
+    expect(stats.totalOrders).toBe(3);
+    expect(stats.totalRevenue).toBe(3500);
+    expect(stats.activeOrders).toBe(1); // فقط pending
+    expect(stats.deliveredOrders).toBe(1);
+  });
+
+  it("يحسب revenueGrowthPct صحيحاً ويتجنّب القسمة على صفر", () => {
+    const now = new Date();
+    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 15).getTime();
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 15).getTime();
+
+    mockOrdersDb.push(
+      { id: 1, distributorId: "1", totalAmount: 1000, status: "delivered", paymentStatus: "paid", createdAt: lastMonth, items: "[]" },
+      { id: 2, distributorId: "1", totalAmount: 1500, status: "pending", paymentStatus: "unpaid", createdAt: thisMonth, items: "[]" }
+    );
+
+    const stats = simulateMyStats(1);
+    expect(stats.lastMonthRevenue).toBe(1000);
+    expect(stats.thisMonthRevenue).toBe(1500);
+    expect(stats.revenueGrowthPct).toBe(50); // ((1500 - 1000) / 1000) * 100
+
+    // اختبار القسمة على صفر
+    const statsNoLastMonth = simulateMyStats(2); // no orders
+    expect(statsNoLastMonth.revenueGrowthPct).toBe(0);
+  });
+
+  it("يُرجع statusCounts صحيحاً", () => {
+    mockOrdersDb.push(
+      { id: 1, distributorId: "1", totalAmount: 100, status: "pending", paymentStatus: "unpaid", createdAt: Date.now(), items: "[]" },
+      { id: 2, distributorId: "1", totalAmount: 100, status: "pending", paymentStatus: "unpaid", createdAt: Date.now(), items: "[]" },
+      { id: 3, distributorId: "1", totalAmount: 100, status: "shipped", paymentStatus: "unpaid", createdAt: Date.now(), items: "[]" }
+    );
+    const stats = simulateMyStats(1);
+    expect(stats.statusCounts["pending"]).toBe(2);
+    expect(stats.statusCounts["shipped"]).toBe(1);
+    expect(stats.statusCounts["draft"]).toBeUndefined();
+  });
+});
+
+describe("Distributor myOrders — فلترة الطلبات", () => {
+  beforeEach(() => {
+    mockOrdersDb.length = 0;
+  });
+
+  it("عزل البيانات: موزّع A لا يرى طلبات موزّع B (يحاكي المنطق)", () => {
+    mockOrdersDb.push(
+      { id: 1, distributorId: "1", totalAmount: 100, status: "pending", paymentStatus: "unpaid", createdAt: Date.now(), items: '[{"name":"door"}]' },
+      { id: 2, distributorId: "2", totalAmount: 500, status: "pending", paymentStatus: "unpaid", createdAt: Date.now(), items: "[]" }
+    );
+
+    const ordersDist1 = simulateMyOrders(1);
+    expect(ordersDist1.length).toBe(1);
+    expect(ordersDist1[0].id).toBe(1);
+    expect(ordersDist1[0].items.length).toBe(1); // JSON parsed
+  });
+
+  it("يُرجع طلبات الموزّع مفلترة بالحالة إذا طُلبت", () => {
+    mockOrdersDb.push(
+      { id: 1, distributorId: "1", totalAmount: 100, status: "pending", paymentStatus: "unpaid", createdAt: Date.now(), items: "[]" },
+      { id: 2, distributorId: "1", totalAmount: 200, status: "delivered", paymentStatus: "paid", createdAt: Date.now(), items: "[]" }
+    );
+
+    const pendingOrders = simulateMyOrders(1, "pending");
+    expect(pendingOrders.length).toBe(1);
+    expect(pendingOrders[0].id).toBe(1);
   });
 });
