@@ -3,7 +3,7 @@
 // إضافة موزع جديد، تعديل، قبول/رفض، تغيير المستوى، تصدير
 // ============================================================
 import { useState, useEffect } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   Search,
   UserCheck,
@@ -1548,6 +1548,7 @@ function SetPasswordModal({
 
 // ─── Main Page ────────────────────────────────────────────────
 export default function AdminDistributors() {
+  const [, navigate] = useLocation();
   const [distributors, setDistributors] = useState<Distributor[]>([]);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<DistributorStatus | "all">(
@@ -1929,7 +1930,7 @@ export default function AdminDistributors() {
                         animate={{ opacity: 1 }}
                         transition={{ delay: i * 0.02 }}
                         className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer"
-                        onClick={() => setSelected(d)}
+                        onClick={() => navigate(`/admin/distributors/${d.id}`)}
                       >
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
