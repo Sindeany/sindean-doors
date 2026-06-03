@@ -865,9 +865,6 @@ export default function ExcelOrderUpload({
     try {
       const totalAmount = validItems.reduce((sum, i) => sum + (i.unitPrice || 0) * i.quantity, 0);
       const result = await createMutation.mutateAsync({
-        distributorId,
-        distributorName,
-        distributorCompany,
         orderType,
         items: validItems.map(i => ({
           doorType: i.doorType,

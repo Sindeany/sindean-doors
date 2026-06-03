@@ -10,7 +10,7 @@ import { db, schema } from "./db.js";
 import { eq, desc } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import { invokeLLM } from "./llm.js";
-import { publicProcedure, adminProcedure, router } from "./trpc.js";
+import { publicProcedure, adminProcedure, distributorProcedure, router } from "./trpc.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface OptionValue {
@@ -263,12 +263,9 @@ const productOptionsRouter = router({
 // ── Distributor Orders Router ─────────────────────────────────────────────────
 const distributorOrdersRouter = router({
   // إنشاء طلب يدوي
-  create: publicProcedure
+  create: distributorProcedure
     .input(
       z.object({
-        distributorId: z.string(),
-        distributorName: z.string(),
-        distributorCompany: z.string().optional(),
         orderType: z
           .enum(["purchase_order", "rfq", "sample_request"])
           .default("purchase_order"),
@@ -296,15 +293,15 @@ const distributorOrdersRouter = router({
         excelFileName: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const now = Date.now();
       const orderNumber = generateOrderNumber();
 
       const [result] = await db.insert(schema.distributorOrders).values({
         orderNumber,
-        distributorId: input.distributorId,
-        distributorName: input.distributorName,
-        distributorCompany: input.distributorCompany,
+        distributorId: String(ctx.distributor.id),
+        distributorName: ctx.distributor.name,
+        distributorCompany: ctx.distributor.company ?? null,
         orderType: input.orderType,
         items: JSON.stringify(input.items),
         totalAmount: input.totalAmount,
@@ -340,7 +337,7 @@ const distributorOrdersRouter = router({
             body: JSON.stringify({
               open_id: ownerOpenId,
               title: `📦 ${typeLabel} جديد من موزع — ${orderNumber}`,
-              content: `الموزع: ${input.distributorName} (${input.distributorCompany || ""})\nعدد البنود: ${input.items.length}\nالإجمالي: ${input.totalAmount.toLocaleString()} ر.س\nالمصدر: ${input.source === "excel_upload" ? "رفع Excel" : "يدوي"}`,
+              content: `الموزع: ${ctx.distributor.name} (${ctx.distributor.company || ""})\nعدد البنود: ${input.items.length}\nالإجمالي: ${input.totalAmount.toLocaleString()} ر.س\nالمصدر: ${input.source === "excel_upload" ? "رفع Excel" : "يدوي"}`,
             }),
           });
         }

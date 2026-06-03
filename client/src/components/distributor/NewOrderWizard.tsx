@@ -350,9 +350,6 @@ export default function NewOrderWizard({ isOpen, onClose, initialOrderType, pref
     setIsSubmitting(true);
     try {
       const result = await createOrderMutation.mutateAsync({
-        distributorId: distributor.id,
-        distributorName: distributor.name,
-        distributorCompany: distributor.company,
         orderType,
         items: items.map(it => ({
           doorType: it.doorType,
