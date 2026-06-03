@@ -183,9 +183,7 @@ function SectionHeader({ title, count, onExport }: { title: string; count?: numb
 // ─── Main Page ────────────────────────────────────────────────
 export default function AdminDistributorProfile() {
   const params = useParams<{ id: string }>();
-  const id = params.id || "D001";
-  const dist = DISTRIBUTOR_INFO[id] || DISTRIBUTOR_INFO["D001"];
-  const tc = TIER_CFG[dist.tier];
+  const id = params.id || "";
 
   const [activeTab, setActiveTab] = useState<"overview" | "orders" | "complaints" | "payments">("overview");
   const [orderFilter, setOrderFilter] = useState<OrderStatus | "all">("all");
@@ -201,6 +199,37 @@ export default function AdminDistributorProfile() {
   const updateStatusMutation = trpc.distributorOrders.updateStatus.useMutation({
     onSuccess: () => { utils.distributorOrders.list.invalidate(); },
   });
+
+  const distId = Number(id);
+  const { data: dist, isLoading: distLoading, isError: distError } =
+    trpc.distributorsAdmin.getById.useQuery(
+      { id: distId },
+      { retry: false, enabled: Number.isFinite(distId) && distId > 0 }
+    );
+
+  if (distLoading) {
+    return (
+      <AdminLayout title="ملف الموزع" subtitle="جاري التحميل" backHref="/admin/distributors">
+        <div className="flex items-center justify-center py-20 text-gray-500 gap-2 font-medium">
+          <RotateCcw className="w-5 h-5 animate-spin" />
+          جارٍ التحميل...
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  if (distError || !dist) {
+    return (
+      <AdminLayout title="ملف الموزع" subtitle="غير موجود" backHref="/admin/distributors">
+        <div className="flex items-center justify-center py-20 text-red-500 gap-2 font-medium">
+          <AlertCircle className="w-5 h-5" />
+          تعذّر العثور على الموزّع
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  const tc = TIER_CFG[dist.tier] ?? TIER_CFG.bronze;
 
   if (isLoading) {
     return (
