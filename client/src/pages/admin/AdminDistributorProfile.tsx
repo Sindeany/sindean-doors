@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import AdminLayout from "@/components/admin/AdminLayout";
 import * as XLSX from "xlsx";
+import { trpc } from "@/lib/trpc";
 
 // ─── Types ────────────────────────────────────────────────────
 type OrderStatus = "pending" | "approved" | "production" | "ready" | "shipped" | "delivered" | "cancelled";
@@ -42,23 +43,28 @@ interface Payment {
   status: PaymentStatus; orderId?: string; note?: string;
 }
 
-// ─── Mock Data Generator ──────────────────────────────────────
-const mockOrders: Order[] = [
-  { id: "ORD-2024-001", date: "2024-04-10", status: "delivered",   items: 12, total: 48000,  paid: 48000,  paymentStatus: "paid",    trackingNumber: "SA123456789", products: "باب خشبي كلاسيكي × 8، باب زجاجي × 4" },
-  { id: "ORD-2024-002", date: "2024-05-22", status: "delivered",   items: 8,  total: 32000,  paid: 32000,  paymentStatus: "paid",    trackingNumber: "SA123456790", products: "باب عصري أبيض × 8" },
-  { id: "ORD-2024-003", date: "2024-07-15", status: "delivered",   items: 20, total: 78000,  paid: 78000,  paymentStatus: "paid",    trackingNumber: "SA123456791", products: "باب خشبي فاخر × 15، إطارات × 5" },
-  { id: "ORD-2024-004", date: "2024-09-03", status: "delivered",   items: 6,  total: 24000,  paid: 24000,  paymentStatus: "paid",    trackingNumber: "SA123456792", products: "باب داخلي × 6" },
-  { id: "ORD-2024-005", date: "2024-10-18", status: "delivered",   items: 15, total: 58500,  paid: 58500,  paymentStatus: "paid",    trackingNumber: "SA123456793", products: "باب خشبي كلاسيكي × 10، باب فيلا × 5" },
-  { id: "ORD-2024-006", date: "2024-12-05", status: "delivered",   items: 10, total: 41000,  paid: 41000,  paymentStatus: "paid",    trackingNumber: "SA123456794", products: "باب عصري × 10" },
-  { id: "ORD-2025-001", date: "2025-02-14", status: "delivered",   items: 18, total: 72000,  paid: 72000,  paymentStatus: "paid",    trackingNumber: "SA123456795", products: "باب خشبي فاخر × 12، باب داخلي × 6" },
-  { id: "ORD-2025-002", date: "2025-04-20", status: "delivered",   items: 9,  total: 36000,  paid: 36000,  paymentStatus: "paid",    trackingNumber: "SA123456796", products: "باب زجاجي × 9" },
-  { id: "ORD-2025-003", date: "2025-06-08", status: "delivered",   items: 14, total: 55000,  paid: 55000,  paymentStatus: "paid",    trackingNumber: "SA123456797", products: "باب كلاسيكي × 14" },
-  { id: "ORD-2025-004", date: "2025-08-25", status: "delivered",   items: 11, total: 44000,  paid: 44000,  paymentStatus: "paid",    trackingNumber: "SA123456798", products: "باب فيلا × 6، باب داخلي × 5" },
-  { id: "ORD-2025-005", date: "2025-10-12", status: "shipped",     items: 16, total: 63000,  paid: 63000,  paymentStatus: "paid",    trackingNumber: "SA123456799", products: "باب خشبي فاخر × 16" },
-  { id: "ORD-2025-006", date: "2025-12-01", status: "production",  items: 20, total: 80000,  paid: 40000,  paymentStatus: "partial", products: "باب كلاسيكي × 12، باب عصري × 8" },
-  { id: "ORD-2026-001", date: "2026-02-18", status: "approved",    items: 8,  total: 32000,  paid: 0,      paymentStatus: "pending", products: "باب داخلي × 8" },
-  { id: "ORD-2026-002", date: "2026-04-05", status: "pending",     items: 12, total: 49500,  paid: 0,      paymentStatus: "pending", products: "باب فيلا × 7، باب زجاجي × 5" },
-];
+// ─── Data Mappers ──────────────────────────────────────
+function mapStatus(s: string): OrderStatus {
+  if (s === "confirmed") return "approved";
+  if (s === "manufacturing") return "production";
+  if (s === "draft") return "pending";
+  return s as OrderStatus;
+}
+
+function mapOrderFromDB(o: any): Order { // o is raw order from trpc
+  const items = o.items ?? [];
+  return {
+    id: o.orderNumber,
+    date: new Date(o.createdAt).toISOString().split("T")[0],
+    status: mapStatus(o.status),
+    items: items.length,
+    products: items.map((it: any) => `${it.doorType} × ${it.quantity}`).join("، "),
+    total: o.totalAmount,
+    paymentStatus: o.paymentStatus as PaymentStatus,
+    paid: o.paymentStatus === "paid" ? o.totalAmount : 0,
+    trackingNumber: undefined,
+  };
+}
 
 const mockComplaints: Complaint[] = [
   { id: "CMP-001", date: "2024-08-10", status: "resolved",  type: "كسر",   orderId: "ORD-2024-003", description: "وصلت 3 أبواب مكسورة في الزوايا", rating: 5, resolvedDate: "2024-08-15" },
@@ -180,13 +186,42 @@ export default function AdminDistributorProfile() {
   const [paymentFilter, setPaymentFilter] = useState<PaymentStatus | "all">("all");
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
 
+  const { data: rawOrders, isLoading, isError } = trpc.distributorOrders.list.useQuery(
+    { distributorId: String(id) },
+    { retry: false }
+  );
+
+  if (isLoading) {
+    return (
+      <AdminLayout title={`ملف الموزع: ${dist.name}`} subtitle={dist.company} backHref="/admin/distributors">
+        <div className="flex items-center justify-center py-20 text-gray-500 gap-2 font-medium">
+          <RotateCcw className="w-5 h-5 animate-spin" />
+          جارٍ التحميل...
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  if (isError) {
+    return (
+      <AdminLayout title={`ملف الموزع: ${dist.name}`} subtitle={dist.company} backHref="/admin/distributors">
+        <div className="flex items-center justify-center py-20 text-red-500 gap-2 font-medium">
+          <AlertCircle className="w-5 h-5" />
+          تعذّر تحميل الطلبات
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  const orders: Order[] = (rawOrders ?? []).map(mapOrderFromDB);
+
   // Computed stats
   const totalRevenue   = mockPayments.filter(p => p.status === "paid").reduce((s, p) => s + p.amount, 0);
-  const pendingAmount  = mockOrders.filter(o => o.paymentStatus !== "paid").reduce((s, o) => s + (o.total - o.paid), 0);
+  const pendingAmount  = orders.filter(o => o.paymentStatus !== "paid").reduce((s, o) => s + (o.total - o.paid), 0);
   const avgRating      = mockComplaints.filter(c => c.rating).reduce((s, c, _, a) => s + (c.rating! / a.length), 0);
   const openComplaints = mockComplaints.filter(c => c.status === "open" || c.status === "in_review").length;
 
-  const filteredOrders = mockOrders.filter(o => orderFilter === "all" || o.status === orderFilter);
+  const filteredOrders = orders.filter(o => orderFilter === "all" || o.status === orderFilter);
   const filteredPayments = mockPayments.filter(p => paymentFilter === "all" || p.status === paymentFilter);
 
   const contractExpiring = dist.contractEnd && new Date(dist.contractEnd) < new Date(Date.now() + 30 * 24 * 3600000);
@@ -221,7 +256,7 @@ export default function AdminDistributorProfile() {
 
   const tabs = [
     { id: "overview",   label: "نظرة عامة",    icon: <BarChart2 className="w-4 h-4" /> },
-    { id: "orders",     label: "الطلبات",       icon: <ShoppingBag className="w-4 h-4" />, count: mockOrders.length },
+    { id: "orders",     label: "الطلبات",       icon: <ShoppingBag className="w-4 h-4" />, count: orders.length },
     { id: "complaints", label: "الشكاوى",       icon: <AlertCircle className="w-4 h-4" />, count: mockComplaints.length },
     { id: "payments",   label: "سجل المدفوعات", icon: <DollarSign className="w-4 h-4" />,  count: mockPayments.length },
   ] as const;
@@ -327,7 +362,7 @@ export default function AdminDistributorProfile() {
 
         {/* KPI Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard icon={<ShoppingBag className="w-4 h-4" />} label="إجمالي الطلبات"   value={mockOrders.length}                              sub={`${mockOrders.filter(o => o.status === "pending" || o.status === "approved").length} نشط`} color="#3B82F6" bg="#EFF6FF" />
+          <StatCard icon={<ShoppingBag className="w-4 h-4" />} label="إجمالي الطلبات"   value={orders.length}                              sub={`${orders.filter(o => o.status === "pending" || o.status === "approved").length} نشط`} color="#3B82F6" bg="#EFF6FF" />
           <StatCard icon={<DollarSign className="w-4 h-4" />}  label="إجمالي الإيرادات" value={`${(totalRevenue/1000).toFixed(0)}K ر.س`}       sub={`متأخر: ${(pendingAmount/1000).toFixed(0)}K`}                                              color="#10B981" bg="#ECFDF5" />
           <StatCard icon={<AlertCircle className="w-4 h-4" />} label="الشكاوى"           value={mockComplaints.length}                           sub={`${openComplaints} مفتوحة`}                                                                color={openComplaints > 0 ? "#EF4444" : "#10B981"} bg={openComplaints > 0 ? "#FEF2F2" : "#ECFDF5"} />
           <StatCard icon={<Star className="w-4 h-4" />}        label="متوسط التقييم"     value={avgRating > 0 ? avgRating.toFixed(1) + " ★" : "—"} sub="تقييم حل الشكاوى"                                                                          color="#F59E0B" bg="#FFFBEB" />
@@ -360,7 +395,7 @@ export default function AdminDistributorProfile() {
                     <div>
                       <SectionHeader title="آخر الطلبات" count={5} />
                       <div className="space-y-2">
-                        {mockOrders.slice(-5).reverse().map((o) => {
+                        {orders.slice(-5).reverse().map((o) => {
                           const sc = ORDER_STATUS[o.status];
                           return (
                             <div key={o.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
@@ -410,7 +445,7 @@ export default function AdminDistributorProfile() {
                           { label: "إجمالي المدفوع",    value: `${(totalRevenue/1000).toFixed(0)}K ر.س`,    color: "#10B981", bg: "#ECFDF5" },
                           { label: "المبالغ المعلقة",   value: `${(pendingAmount/1000).toFixed(0)}K ر.س`,   color: "#F59E0B", bg: "#FFFBEB" },
                           { label: "عدد الدفعات",       value: mockPayments.filter(p => p.status === "paid").length, color: "#3B82F6", bg: "#EFF6FF" },
-                          { label: "متوسط قيمة الطلب",  value: `${Math.round(totalRevenue / mockOrders.filter(o => o.status === "delivered").length / 1000)}K ر.س`, color: "#8B5CF6", bg: "#F5F3FF" },
+                          { label: "متوسط قيمة الطلب",  value: `${Math.round(totalRevenue / (orders.filter(o => o.status === "delivered").length || 1) / 1000)}K ر.س`, color: "#8B5CF6", bg: "#F5F3FF" },
                         ].map((s) => (
                           <div key={s.label} className="p-3 rounded-xl border border-gray-100" style={{ background: s.bg }}>
                             <div className="text-xs text-gray-500 mb-1">{s.label}</div>
