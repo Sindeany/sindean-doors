@@ -9,15 +9,15 @@ import { useDistributorAuth } from "@/contexts/DistributorAuthContext";
 import DistributorLayout from "@/components/distributor/DistributorLayout";
 import NewOrderWizard from "@/components/distributor/NewOrderWizard";
 import {
-  mockOrders,
   orderStatusConfig,
   paymentStatusConfig,
   DistributorOrder,
 } from "@/lib/distributorData";
+import { trpc } from "@/lib/trpc";
 import {
   Search, Filter, ChevronDown, ChevronUp,
   Truck, Package, Clock, CheckCircle2, XCircle,
-  Eye, Download, Plus, RefreshCw,
+  Eye, Download, Plus, RefreshCw, Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -267,6 +267,26 @@ function OrderCard({ order, onReorder }: { order: DistributorOrder; onReorder: (
   );
 }
 
+function mapOrderFromDB(o: any): DistributorOrder {
+  return {
+    id: String(o.id),
+    orderNumber: o.orderNumber,
+    date: new Date(o.createdAt).toLocaleDateString("ar-SA"),
+    products: (o.items ?? []).map((it: any) => ({
+      name: it.doorType,
+      qty: it.quantity,
+      unitPrice: it.unitPrice,
+      total: it.quantity * it.unitPrice,
+    })),
+    totalAmount: o.totalAmount,
+    status: o.status,
+    paymentStatus: o.paymentStatus,
+    notes: o.notes ?? undefined,
+    deliveryDate: "غير محدد",
+    trackingNumber: undefined,
+  };
+}
+
 export default function DistributorOrders() {
   const { distributor } = useDistributorAuth();
   const [, navigate] = useLocation();
@@ -275,6 +295,11 @@ export default function DistributorOrders() {
   const [showNewOrder, setShowNewOrder] = useState(false);
   const [reorderData, setReorderData] = useState<DistributorOrder | null>(null);
   const { dir } = useLanguage();
+
+  const { data: rawOrders, isLoading, isError } = trpc.distributors.myOrders.useQuery(undefined, {
+    retry: false,
+    enabled: !!distributor,
+  });
 
   const handleReorder = (order: DistributorOrder) => {
     setReorderData(order);
@@ -286,7 +311,25 @@ export default function DistributorOrders() {
     return null;
   }
 
-  const filtered = mockOrders.filter((o) => {
+  if (isLoading) {
+    return (
+      <DistributorLayout title={dir === "rtl" ? "الطلبات" : "Orders"} subtitle={dir === "rtl" ? "إدارة وتتبع جميع طلباتك" : "Manage and track all your orders"}>
+        <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
+      </DistributorLayout>
+    );
+  }
+
+  if (isError) {
+    return (
+      <DistributorLayout title={dir === "rtl" ? "الطلبات" : "Orders"} subtitle={dir === "rtl" ? "إدارة وتتبع جميع طلباتك" : "Manage and track all your orders"}>
+        <div className="text-center py-20 text-red-500">{dir === "rtl" ? "تعذّر تحميل الطلبات" : "Failed to load orders"}</div>
+      </DistributorLayout>
+    );
+  }
+
+  const orders = (rawOrders ?? []).map(mapOrderFromDB);
+
+  const filtered = orders.filter((o) => {
     const matchSearch =
       o.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
       o.products.some((p) => p.name.includes(search));
@@ -295,17 +338,17 @@ export default function DistributorOrders() {
   });
 
   const statusTabs = dir === "rtl" ? [
-    { value: "all", label: "الكل", count: mockOrders.length },
-    { value: "pending", label: "في الانتظار", count: mockOrders.filter((o) => o.status === "pending").length },
-    { value: "manufacturing", label: "قيد التصنيع", count: mockOrders.filter((o) => o.status === "manufacturing").length },
-    { value: "shipped", label: "تم الشحن", count: mockOrders.filter((o) => o.status === "shipped").length },
-    { value: "delivered", label: "تم التسليم", count: mockOrders.filter((o) => o.status === "delivered").length },
+    { value: "all", label: "الكل", count: orders.length },
+    { value: "pending", label: "في الانتظار", count: orders.filter((o) => o.status === "pending").length },
+    { value: "manufacturing", label: "قيد التصنيع", count: orders.filter((o) => o.status === "manufacturing").length },
+    { value: "shipped", label: "تم الشحن", count: orders.filter((o) => o.status === "shipped").length },
+    { value: "delivered", label: "تم التسليم", count: orders.filter((o) => o.status === "delivered").length },
   ] : [
-    { value: "all", label: "All", count: mockOrders.length },
-    { value: "pending", label: "Pending", count: mockOrders.filter((o) => o.status === "pending").length },
-    { value: "manufacturing", label: "Manufacturing", count: mockOrders.filter((o) => o.status === "manufacturing").length },
-    { value: "shipped", label: "Shipped", count: mockOrders.filter((o) => o.status === "shipped").length },
-    { value: "delivered", label: "Delivered", count: mockOrders.filter((o) => o.status === "delivered").length },
+    { value: "all", label: "All", count: orders.length },
+    { value: "pending", label: "Pending", count: orders.filter((o) => o.status === "pending").length },
+    { value: "manufacturing", label: "Manufacturing", count: orders.filter((o) => o.status === "manufacturing").length },
+    { value: "shipped", label: "Shipped", count: orders.filter((o) => o.status === "shipped").length },
+    { value: "delivered", label: "Delivered", count: orders.filter((o) => o.status === "delivered").length },
   ];
 
   return (

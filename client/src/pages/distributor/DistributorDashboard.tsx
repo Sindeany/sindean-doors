@@ -13,11 +13,11 @@ import NewOrderWizard from "@/components/distributor/NewOrderWizard";
 import BulkOrderUpload from "@/components/distributor/BulkOrderUpload";
 import ProjectFilesUpload from "@/components/distributor/ProjectFilesUpload";
 import {
-  mockOrders,
   // monthlySalesData حُذف — الرسمان يستخدمان stats?.monthly (Batch 4-b)
   orderStatusConfig,
   paymentStatusConfig,
   tierConfig,
+  DistributorOrder,
 } from "@/lib/distributorData";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -32,6 +32,26 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 
+function mapOrderFromDB(o: any): DistributorOrder {
+  return {
+    id: String(o.id),
+    orderNumber: o.orderNumber,
+    date: new Date(o.createdAt).toLocaleDateString("ar-SA"),
+    products: (o.items ?? []).map((it: any) => ({
+      name: it.doorType,
+      qty: it.quantity,
+      unitPrice: it.unitPrice,
+      total: it.quantity * it.unitPrice,
+    })),
+    totalAmount: o.totalAmount,
+    status: o.status,
+    paymentStatus: o.paymentStatus,
+    notes: o.notes ?? undefined,
+    deliveryDate: "غير محدد",
+    trackingNumber: undefined,
+  };
+}
+
 export default function DistributorDashboard() {
   const { distributor, isLoading } = useDistributorAuth();
   const [, navigate] = useLocation();
@@ -43,6 +63,9 @@ export default function DistributorDashboard() {
   // ── Batch 4-b: إحصائيات حقيقية من myStats ──────────────────────────────
   const { data: stats, isLoading: statsLoading, isError: statsError } =
     trpc.distributors.myStats.useQuery(undefined, { retry: false, enabled: !!distributor });
+
+  // ── Batch 5-b: جلب طلبات حقيقية من myOrders ────────────────────────────
+  const { data: rawOrders } = trpc.distributors.myOrders.useQuery(undefined, { retry: false, enabled: !!distributor });
 
   if (isLoading) return null;
   if (!distributor) {
@@ -65,7 +88,7 @@ export default function DistributorDashboard() {
   // الرسمان يستخدمان stats?.monthly — حقل month (عربي) متوافق مع XAxis الحالي
   const monthlyChartData = stats?.monthly ?? [];
 
-  const recentOrders = mockOrders.slice(0, 5); // 4-ج: سيُستبدل بـ myOrders
+  const recentOrders = (rawOrders ?? []).map(mapOrderFromDB).slice(0, 5);
 
   const kpis = [
     {
