@@ -7,11 +7,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { useDistributorAuth } from "@/contexts/DistributorAuthContext";
 import DistributorLayout from "@/components/distributor/DistributorLayout";
-import {
-  monthlySalesData,
-  productPerformanceData,
-  mockOrders,
-} from "@/lib/distributorData";
+import { trpc } from "@/lib/trpc";
 import {
   AreaChart,
   Area,
@@ -48,54 +44,80 @@ export default function DistributorReports() {
   const [, navigate] = useLocation();
   const [period, setPeriod] = useState("آخر 6 أشهر");
 
+  const { data: stats, isLoading, isError } = trpc.distributors.myStats.useQuery(undefined, { retry: false, enabled: !!distributor });
+
   if (!distributor) {
     navigate("/distributor");
     return null;
   }
 
-  const totalRevenue = monthlySalesData.reduce((s, m) => s + m.revenue, 0);
-  const totalUnits = monthlySalesData.reduce((s, m) => s + m.units, 0);
-  const totalOrders = monthlySalesData.reduce((s, m) => s + m.orders, 0);
-  const avgOrderValue = Math.round(totalRevenue / totalOrders);
+  if (isLoading) {
+    return (
+      <DistributorLayout title="التقارير والتحليلات" subtitle="تحليل مفصل لأداء مبيعاتك">
+        <div className="flex items-center justify-center py-20 text-gray-500 font-medium">
+          جارٍ التحميل...
+        </div>
+      </DistributorLayout>
+    );
+  }
+
+  if (isError || !stats) {
+    return (
+      <DistributorLayout title="التقارير والتحليلات" subtitle="تحليل مفصل لأداء مبيعاتك">
+        <div className="py-20 text-center text-red-500 font-medium">
+          تعذّر تحميل التقارير
+        </div>
+      </DistributorLayout>
+    );
+  }
+
+  const avgOrderValue = stats.totalOrders > 0 ? Math.round(stats.totalRevenue / stats.totalOrders) : 0;
 
   // Pie data for order status
-  const pieData = [
-    { name: "تم التسليم", value: mockOrders.filter((o) => o.status === "delivered").length },
-    { name: "قيد التصنيع", value: mockOrders.filter((o) => o.status === "manufacturing").length },
-    { name: "تم الشحن", value: mockOrders.filter((o) => o.status === "shipped").length },
-    { name: "في الانتظار", value: mockOrders.filter((o) => o.status === "pending").length },
-  ];
+  const STATUS_LABELS: Record<string, string> = {
+    pending: "في الانتظار",
+    manufacturing: "قيد التصنيع",
+    shipped: "تم الشحن",
+    delivered: "تم التسليم",
+    cancelled: "ملغي",
+    draft: "مسودة",
+    confirmed: "موافق عليه"
+  };
+  const pieData = Object.entries(stats.statusCounts).map(([key, val]) => ({
+    name: STATUS_LABELS[key] || key,
+    value: val
+  }));
 
   // Growth data
-  const growthData = monthlySalesData.map((m, i) => ({
+  const growthData = stats.monthly.map((m, i) => ({
     ...m,
-    growth: i > 0 ? Math.round(((m.revenue - monthlySalesData[i - 1].revenue) / monthlySalesData[i - 1].revenue) * 100) : 0,
+    growth: i > 0 && stats.monthly[i - 1].revenue > 0 ? Math.round(((m.revenue - stats.monthly[i - 1].revenue) / stats.monthly[i - 1].revenue) * 100) : 0,
   }));
 
   const summaryKPIs = [
     {
       label: "إجمالي الإيرادات",
-      value: `${(totalRevenue / 1000).toFixed(0)}K ر.س`,
-      change: "+22%",
-      positive: true,
+      value: `${(stats.totalRevenue / 1000).toFixed(0)}K ر.س`,
+      change: `${stats.revenueGrowthPct > 0 ? "+" : ""}${stats.revenueGrowthPct}%`,
+      positive: stats.revenueGrowthPct >= 0,
     },
     {
       label: "إجمالي الوحدات",
-      value: `${totalUnits} وحدة`,
-      change: "+18%",
+      value: "قريباً", // units per month needs server aggregation (future batch)
+      change: "—",
       positive: true,
     },
     {
       label: "إجمالي الطلبات",
-      value: `${totalOrders} طلب`,
-      change: "+31%",
+      value: `${stats.totalOrders} طلب`,
+      change: "—",
       positive: true,
     },
     {
       label: "متوسط قيمة الطلب",
       value: `${(avgOrderValue / 1000).toFixed(1)}K ر.س`,
-      change: "-3%",
-      positive: false,
+      change: "—",
+      positive: true,
     },
   ];
 
@@ -171,7 +193,7 @@ export default function DistributorReports() {
               <ArrowUpRight className="w-5 h-5" style={{ color: "#059669" }} />
             </div>
             <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={monthlySalesData}>
+              <AreaChart data={stats.monthly}>
                 <defs>
                   <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="oklch(0.38 0.06 160)" stopOpacity={0.25} />
@@ -233,64 +255,12 @@ export default function DistributorReports() {
 
         {/* Product performance + Pie chart */}
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* Product performance bar */}
-          <div className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <h3
-                  className="font-bold text-lg"
-                  style={{ color: "oklch(0.25 0.04 160)", fontFamily: "DM Serif Display, serif" }}
-                >
-                  أداء المنتجات
-                </h3>
-                <p className="text-sm text-gray-400">المنتجات الأكثر مبيعاً</p>
-              </div>
-            </div>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={productPerformanceData} layout="vertical" barSize={18}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11, fill: "#9ca3af" }} />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  tick={{ fontSize: 10, fill: "#6b7280" }}
-                  width={120}
-                />
-                <Tooltip
-                  formatter={(v: number) => [`${v} وحدة`, "المبيعات"]}
-                  contentStyle={{ fontFamily: "IBM Plex Sans Arabic, sans-serif", borderRadius: "10px" }}
-                />
-                <Bar dataKey="units" radius={[0, 6, 6, 0]}>
-                  {productPerformanceData.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-
-            {/* Product table */}
-            <div className="mt-4 space-y-2">
-              {productPerformanceData.map(({ name, units, revenue, growth }) => (
-                <div
-                  key={name}
-                  className="flex items-center justify-between py-2 border-t border-gray-50"
-                >
-                  <span className="text-sm text-gray-700 flex-1 truncate">{name}</span>
-                  <div className="flex items-center gap-4 text-sm flex-shrink-0">
-                    <span className="text-gray-500">{units} وحدة</span>
-                    <span className="font-medium" style={{ color: "oklch(0.38 0.06 160)" }}>
-                      {(revenue / 1000).toFixed(1)}K
-                    </span>
-                    <span
-                      className="text-xs flex items-center gap-0.5"
-                      style={{ color: growth > 0 ? "#059669" : "#dc2626" }}
-                    >
-                      <TrendingUp className="w-3 h-3" />
-                      {growth}%
-                    </span>
-                  </div>
-                </div>
-              ))}
+          {/* Product performance bar - HIDDEN pending server support */}
+          <div className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center justify-center min-h-[300px]">
+            <div className="text-center">
+              <h3 className="font-bold text-lg mb-2" style={{ color: "oklch(0.25 0.04 160)", fontFamily: "DM Serif Display, serif" }}>أداء المنتجات</h3>
+              <p className="text-sm text-gray-500">قريباً... (يتطلب دعماً من الخادم لتجميع المنتجات الأكثر مبيعاً)</p>
+              {/* // TODO: requires myStats.topProducts from server (future batch). */}
             </div>
           </div>
 
@@ -356,7 +326,7 @@ export default function DistributorReports() {
             </div>
           </div>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={monthlySalesData} barGap={4}>
+            <BarChart data={stats.monthly} barGap={4}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} />
               <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} />
@@ -366,7 +336,8 @@ export default function DistributorReports() {
               <Legend
                 wrapperStyle={{ fontFamily: "IBM Plex Sans Arabic, sans-serif", fontSize: "12px" }}
               />
-              <Bar dataKey="units" name="الوحدات" fill="oklch(0.38 0.06 160)" radius={[4, 4, 0, 0]} barSize={20} />
+              {/* units per month needs server aggregation (future batch) */}
+              {/* <Bar dataKey="units" name="الوحدات" fill="oklch(0.38 0.06 160)" radius={[4, 4, 0, 0]} barSize={20} /> */}
               <Bar dataKey="orders" name="الطلبات" fill="oklch(0.68 0.10 60)" radius={[4, 4, 0, 0]} barSize={20} />
             </BarChart>
           </ResponsiveContainer>
