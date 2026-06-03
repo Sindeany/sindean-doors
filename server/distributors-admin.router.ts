@@ -48,6 +48,18 @@ export const distributorsAdminRouter = router({
     });
   }),
 
+  getById: adminProcedure
+    .input(z.object({ id: z.number().int() }))
+    .query(async ({ input }) => {
+      const result = await db.query.distributors.findFirst({
+        where: eq(schema.distributors.id, input.id),
+      });
+      if (!result) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "الموزّع غير موجود" });
+      }
+      return result;
+    }),
+
   create: adminProcedure.input(distInput).mutation(async ({ input }) => {
     // تحقق من عدم تكرار البريد الإلكتروني
     const existing = await db.query.distributors.findFirst({
