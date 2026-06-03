@@ -75,6 +75,14 @@ const NAV_ITEMS: NavItem[] = [
     badge: 3,
   },
   {
+    id: "distributor-orders",
+    labelAr: "طلبات الموزعين",
+    labelEn: "Distributor Orders",
+    labelZh: "经销商订单",
+    icon: <Package className="w-5 h-5" />,
+    path: "/admin/distributor-orders",
+  },
+  {
     id: "orders",
     labelAr: "الطلبات",
     labelEn: "Orders",

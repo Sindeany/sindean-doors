@@ -34,6 +34,7 @@ import DistributorComplaints from "./pages/distributor/DistributorComplaints";
 // Admin Panel
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminDistributors from "./pages/admin/AdminDistributors";
+import AdminDistributorOrders from "./pages/admin/AdminDistributorOrders";
 import AdminOrders from "./pages/admin/AdminOrdersDB";
 import AdminComplaints from "./pages/admin/AdminComplaints";
 import AdminProducts from "./pages/admin/AdminProducts";
@@ -134,6 +135,7 @@ function Router() {
         <Route path={"/admin"} component={AdminDashboard} />
         <Route path={"/admin/dashboard"} component={AdminDashboard} />
         <Route path={"/admin/distributors"} component={AdminDistributors} />
+        <Route path={"/admin/distributor-orders"} component={AdminDistributorOrders} />
         <Route path={"/admin/orders"} component={AdminOrders} />
         <Route path={"/admin/orders-db"} component={AdminOrders} />
         <Route path={"/admin/complaints"} component={AdminComplaints} />
