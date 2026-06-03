@@ -12,7 +12,9 @@ const COOKIE_NAME = "adminSession";
 const COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
-  sameSite: "strict" as const,
+  sameSite: (process.env.NODE_ENV === "production" ? "strict" : "lax") as
+    | "strict"
+    | "lax",
   maxAge: 8 * 60 * 60 * 1000, // 8 hours in ms
   path: "/",
 };

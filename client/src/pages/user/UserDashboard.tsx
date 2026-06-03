@@ -21,11 +21,12 @@ import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function UserDashboard() {
-  const { user, logout, wishlistIds } = useUserAuth();
+  const { user, logout, wishlistIds, isLoading } = useUserAuth();
   const [, navigate] = useLocation();
   const [activeSection] = useState("overview");
   const { dir } = useLanguage();
 
+  if (isLoading) return null;
   if (!user) {
     navigate("/login");
     return null;

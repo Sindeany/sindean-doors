@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useSupplierAuth } from "@/contexts/SupplierAuthContext";
@@ -41,10 +41,14 @@ const CATEGORIES = [
 
 export default function SupplierLogin() {
   const [, navigate] = useLocation();
-  const { login } = useSupplierAuth();
+  const { login, supplier } = useSupplierAuth();
   const [activeTab, setActiveTab] = useState("login");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    if (supplier) navigate("/supplier/dashboard");
+  }, [supplier, navigate]);
 
   // Login form
   const [loginEmail, setLoginEmail] = useState("");
@@ -66,8 +70,8 @@ export default function SupplierLogin() {
 
   const loginMutation = trpc.suppliers.login.useMutation({
     onSuccess: data => {
+      // as any: tRPC return type (SafeSupplier) may miss some non-essential fields from SupplierProfile
       login(data.supplier as any);
-      navigate("/supplier/dashboard");
     },
     onError: err => setError(err.message),
   });

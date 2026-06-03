@@ -5,9 +5,7 @@
 import {
   createContext,
   useContext,
-  useState,
   useCallback,
-  useEffect,
   ReactNode,
 } from "react";
 import { trpc } from "@/lib/trpc";
@@ -15,14 +13,14 @@ import { trpc } from "@/lib/trpc";
 interface AdminAuthContextType {
   isAdminLoggedIn: boolean;
   isCheckingAuth: boolean;
-  setAdminLoggedIn: (val: boolean) => void;
+  login: () => void;
   clearAdminToken: () => void;
 }
 
 const AdminAuthContext = createContext<AdminAuthContextType | null>(null);
 
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const utils = trpc.useUtils();
 
   // Verify session via httpOnly cookie on every mount
   const verifyQuery = trpc.adminAuth.verify.useQuery(undefined, {
@@ -30,19 +28,17 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     refetchOnWindowFocus: false,
   });
 
-  useEffect(() => {
-    if (verifyQuery.isSuccess) setIsAdminLoggedIn(true);
-    if (verifyQuery.isError) setIsAdminLoggedIn(false);
-  }, [verifyQuery.isSuccess, verifyQuery.isError]);
+  const isAdminLoggedIn = verifyQuery.isSuccess && verifyQuery.data?.valid === true;
+  const isCheckingAuth = verifyQuery.isLoading;
 
   // Logout: invalidates session on server and clears cookie
   const logoutMutation = trpc.adminAuth.logout.useMutation({
-    onSettled: () => setIsAdminLoggedIn(false),
+    onSettled: () => utils.adminAuth.verify.reset(),
   });
 
-  const setAdminLoggedIn = useCallback((val: boolean) => {
-    setIsAdminLoggedIn(val);
-  }, []);
+  const login = useCallback(() => {
+    utils.adminAuth.verify.setData(undefined, { valid: true });
+  }, [utils]);
 
   const clearAdminToken = useCallback(() => {
     logoutMutation.mutate();
@@ -52,8 +48,8 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     <AdminAuthContext.Provider
       value={{
         isAdminLoggedIn,
-        isCheckingAuth: verifyQuery.isPending,
-        setAdminLoggedIn,
+        isCheckingAuth,
+        login,
         clearAdminToken,
       }}
     >

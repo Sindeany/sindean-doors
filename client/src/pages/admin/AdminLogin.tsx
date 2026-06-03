@@ -2,7 +2,7 @@
 // Admin Login Page - Sindian Doors
 // Simple, secure admin authentication
 // ============================================================
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,15 +14,18 @@ import { trpc } from "@/lib/trpc";
 
 export default function AdminLogin() {
   const [, navigate] = useLocation();
-  const { setAdminLoggedIn } = useAdminAuth();
+  const { login, isAdminLoggedIn } = useAdminAuth();
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
+  useEffect(() => {
+    if (isAdminLoggedIn) navigate("/admin");
+  }, [isAdminLoggedIn, navigate]);
+
   const loginMutation = trpc.adminAuth.login.useMutation({
     onSuccess: () => {
-      setAdminLoggedIn(true);
+      login();
       toast.success("مرحباً بك في لوحة الإدارة");
-      navigate("/admin");
     },
     onError: err => {
       toast.error(err.message || "كلمة المرور غير صحيحة");

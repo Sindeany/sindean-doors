@@ -33,13 +33,18 @@ import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function DistributorDashboard() {
-  const { distributor } = useDistributorAuth();
+  const { distributor, isLoading } = useDistributorAuth();
   const [, navigate] = useLocation();
   const { dir } = useLanguage();
   const [showNewOrder, setShowNewOrder] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [showProjectFiles, setShowProjectFiles] = useState(false);
 
+  // ── Batch 4-b: إحصائيات حقيقية من myStats ──────────────────────────────
+  const { data: stats, isLoading: statsLoading, isError: statsError } =
+    trpc.distributors.myStats.useQuery(undefined, { retry: false, enabled: !!distributor });
+
+  if (isLoading) return null;
   if (!distributor) {
     navigate("/distributor");
     return null;
@@ -47,9 +52,7 @@ export default function DistributorDashboard() {
 
   const tier = tierConfig[distributor.tier];
 
-  // ── Batch 4-b: إحصائيات حقيقية من myStats ──────────────────────────────
-  const { data: stats, isLoading: statsLoading, isError: statsError } =
-    trpc.distributors.myStats.useQuery(undefined, { retry: false });
+
 
   const totalRevenue    = stats?.totalRevenue    ?? 0;
   const thisMonthRevenue = stats?.thisMonthRevenue ?? 0;

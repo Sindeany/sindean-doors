@@ -4,7 +4,7 @@
 // Design: Architectural Luxury — deep oak green + warm beige
 // ============================================================
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useUserAuth } from "@/contexts/UserAuthContext";
 import { Button } from "@/components/ui/button";
@@ -19,8 +19,12 @@ import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function UserLogin() {
   const [, navigate] = useLocation();
-  const { login, register } = useUserAuth();
+  const { login, register, user } = useUserAuth();
   const { dir } = useLanguage();
+
+  useEffect(() => {
+    if (user) navigate("/account");
+  }, [user, navigate]);
 
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -42,7 +46,6 @@ export default function UserLogin() {
     setLoginLoading(false);
     if (ok) {
       toast.success(dir === "rtl" ? "مرحباً بك في سنديان!" : "Welcome to Sindian!");
-      navigate("/account");
     }
   };
 
@@ -57,7 +60,6 @@ export default function UserLogin() {
     setRegLoading(false);
     if (ok) {
       toast.success(dir === "rtl" ? "تم إنشاء حسابك بنجاح!" : "Account created successfully!");
-      navigate("/account");
     }
   };
 

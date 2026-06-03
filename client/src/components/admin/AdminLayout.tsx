@@ -299,7 +299,19 @@ export default function AdminLayout({
 }) {
   const { lang, setLang, dir } = useLanguage();
   const { isAdminLoggedIn, isCheckingAuth, clearAdminToken } = useAdminAuth();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
+
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
+
+  // جلب عدد الطلبات الجديدة من قاعدة البيانات
+  const { data: newOrders } = trpc.orders.list.useQuery(
+    { status: "new" },
+    { refetchInterval: 30000, enabled: isAdminLoggedIn } // تحديث كل 30 ثانية
+  );
+  const newOrdersCount = newOrders?.length ?? 0;
+  const isRtl = dir === "rtl";
 
   // While verifying the session cookie, render nothing to avoid flash-redirect
   if (isCheckingAuth) return null;
@@ -314,18 +326,6 @@ export default function AdminLayout({
     clearAdminToken();
     navigate("/admin/login");
   };
-
-  // جلب عدد الطلبات الجديدة من قاعدة البيانات
-  const { data: newOrders } = trpc.orders.list.useQuery(
-    { status: "new" },
-    { refetchInterval: 30000 } // تحديث كل 30 ثانية
-  );
-  const newOrdersCount = newOrders?.length ?? 0;
-  const isRtl = dir === "rtl";
-  const [location] = useLocation();
-  const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [langMenuOpen, setLangMenuOpen] = useState(false);
 
   const activeItem = NAV_ITEMS.find(n => {
     if (n.path === "/admin") return location === "/admin";

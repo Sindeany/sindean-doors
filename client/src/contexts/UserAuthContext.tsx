@@ -6,8 +6,6 @@
 import {
   createContext,
   useContext,
-  useState,
-  useEffect,
   ReactNode,
 } from "react";
 import { toast } from "sonner";
@@ -30,6 +28,7 @@ interface SafeUser {
 interface UserAuthContextType {
   user: SafeUser | null;
   isAuthenticated: boolean;
+  isLoading: boolean;
   wishlistIds: number[];
   login: (email: string, password: string) => Promise<boolean>;
   register: (
@@ -46,32 +45,27 @@ interface UserAuthContextType {
 const UserAuthContext = createContext<UserAuthContextType | null>(null);
 
 export function UserAuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<SafeUser | null>(null);
+  const utils = trpc.useUtils();
 
   const loginMutation = trpc.users.login.useMutation();
   const registerMutation = trpc.users.register.useMutation();
   const toggleWishlistMutation = trpc.users.toggleWishlist.useMutation();
   const logoutMutation = trpc.users.logout.useMutation({
-    onSettled: () => setUser(null),
+    onSettled: () => utils.users.me.reset(),
   });
 
   // استعادة الجلسة عند تحميل الصفحة عبر httpOnly cookie
-  const { data: meData } = trpc.users.me.useQuery(undefined, {
-    enabled: true,
+  const meQuery = trpc.users.me.useQuery(undefined, {
     retry: false,
-    onError: () => {
-      setUser(null);
-    },
-  } as any);
+  });
 
-  useEffect(() => {
-    if (meData) setUser(meData as SafeUser);
-  }, [meData]);
+  const user = (meQuery.data as SafeUser) ?? null;
+  const isLoading = meQuery.isLoading;
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       const result = await loginMutation.mutateAsync({ email, password });
-      setUser(result.user as SafeUser);
+      utils.users.me.invalidate();
       return true;
     } catch (err: any) {
       toast.error(err?.message || "خطأ في تسجيل الدخول");
@@ -92,7 +86,7 @@ export function UserAuthProvider({ children }: { children: ReactNode }) {
         phone,
         password,
       });
-      setUser({ ...result.user, createdAt: Date.now() } as SafeUser);
+      utils.users.me.invalidate();
       return true;
     } catch (err: any) {
       toast.error(err?.message || "خطأ في إنشاء الحساب");
@@ -113,9 +107,10 @@ export function UserAuthProvider({ children }: { children: ReactNode }) {
     }
     try {
       const result = await toggleWishlistMutation.mutateAsync({ productId });
-      setUser(prev =>
-        prev ? { ...prev, wishlistIds: result.wishlistIds } : prev
-      );
+      utils.users.me.setData(undefined, (prev: any) => {
+        if (!prev) return prev;
+        return { ...prev, wishlistIds: result.wishlistIds };
+      });
       const added = result.wishlistIds.includes(productId);
       toast.success(
         added ? "تمت إضافة المنتج إلى المفضلة" : "تمت إزالة المنتج من المفضلة"
@@ -132,6 +127,7 @@ export function UserAuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         isAuthenticated: !!user,
+        isLoading,
         wishlistIds,
         login,
         register,

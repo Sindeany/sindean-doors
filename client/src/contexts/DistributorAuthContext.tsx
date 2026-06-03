@@ -3,7 +3,7 @@
 // Batch 3-b: استبدال mock auth بمصادقة حقيقية (httpOnly cookies + tRPC)
 // ============================================================
 
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, ReactNode } from "react";
 import { DistributorProfile } from "@/lib/distributorData";
 import { trpc } from "@/lib/trpc";
 
@@ -20,25 +20,22 @@ const DistributorAuthContext = createContext<DistributorAuthContextType | null>(
 );
 
 export function DistributorAuthProvider({ children }: { children: ReactNode }) {
-  const [distributor, setDistributor] = useState<DistributorProfile | null>(
-    null
-  );
+  const utils = trpc.useUtils();
 
   // استعادة الجلسة عند تحميل الصفحة عبر httpOnly cookie
-  const { isLoading } = trpc.distributors.me.useQuery(undefined, {
+  const meQuery = trpc.distributors.me.useQuery(undefined, {
     retry: false,
-    // as any: onSuccess/onError ليسا في النوع الرسمي لـ useQuery في tRPC v11
-    // لكنهما مدعومان في TanStack Query v5 الذي يُشغّله tRPC
-    onSuccess: (data: any) => setDistributor(data as DistributorProfile),
-    onError: () => setDistributor(null),
-  } as any);
+  });
+
+  const distributor = (meQuery.data as DistributorProfile) ?? null;
+  const isLoading = meQuery.isLoading;
 
   const logoutMutation = trpc.distributors.logout.useMutation({
-    onSettled: () => setDistributor(null),
+    onSettled: () => utils.distributors.me.reset(),
   });
 
   const login = (newDistributor: DistributorProfile) => {
-    setDistributor(newDistributor);
+    utils.distributors.me.invalidate();
   };
 
   const logout = () => {

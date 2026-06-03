@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
 
 interface SupplierProfile {
@@ -29,21 +29,22 @@ interface SupplierAuthContextType {
 const SupplierAuthContext = createContext<SupplierAuthContextType | null>(null);
 
 export function SupplierAuthProvider({ children }: { children: ReactNode }) {
-  const [supplier, setSupplier] = useState<SupplierProfile | null>(null);
+  const utils = trpc.useUtils();
 
   // استعادة الجلسة عند تحميل الصفحة عبر httpOnly cookie
-  const { isLoading } = trpc.suppliers.me.useQuery(undefined, {
+  const meQuery = trpc.suppliers.me.useQuery(undefined, {
     retry: false,
-    onSuccess: (data: any) => setSupplier(data as SupplierProfile),
-    onError: () => setSupplier(null),
-  } as any);
+  });
+
+  const supplier = (meQuery.data as SupplierProfile) ?? null;
+  const isLoading = meQuery.isLoading;
 
   const logoutMutation = trpc.suppliers.logout.useMutation({
-    onSettled: () => setSupplier(null),
+    onSettled: () => utils.suppliers.me.reset(),
   });
 
   const login = (newSupplier: SupplierProfile) => {
-    setSupplier(newSupplier);
+    utils.suppliers.me.setData(undefined, newSupplier);
   };
 
   const logout = () => {
