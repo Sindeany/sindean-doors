@@ -10,7 +10,7 @@ import {
   CheckCircle2, Clock, Ban, XCircle, Crown, Award, Zap,
   ChevronDown, ChevronUp, Download, MessageSquare, Edit2,
   Package, Truck, CheckCheck, RotateCcw, DollarSign, Calendar,
-  BarChart2, Activity, Lock, Eye, Filter,
+  BarChart2, Activity, Lock, Filter,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ interface Order {
   items: number; total: number; paid: number;
   paymentStatus: PaymentStatus; trackingNumber?: string;
   products: string; dbId?: number;
+  rawItems?: any[]; // raw order line items from server
 }
 
 interface Complaint {
@@ -57,6 +58,7 @@ function mapOrderFromDB(o: any): Order { // o is raw order from trpc
     id: o.orderNumber,
     dbId: o.id,
     date: new Date(o.createdAt).toISOString().split("T")[0],
+    rawItems: items,
     status: mapStatus(o.status),
     items: items.length,
     products: items.map((it: any) => `${it.doorType} × ${it.quantity}`).join("، "),
@@ -526,10 +528,39 @@ export default function AdminDistributorProfile() {
                                   {o.trackingNumber && (
                                     <div className="text-xs text-gray-600"><span className="font-medium">رقم التتبع:</span> <span className="font-mono text-blue-600">{o.trackingNumber}</span></div>
                                   )}
-                                  <div className="flex gap-2 pt-1">
-                                    <Button variant="outline" className="text-xs h-7 gap-1" onClick={(e) => { e.stopPropagation(); setExpandedOrder(isExpanded ? null : o.id); }}>
-                                      <Eye className="w-3.5 h-3.5" /> عرض الطلب
-                                    </Button>
+
+                                  <div className="mt-2 border border-gray-100 rounded-lg overflow-hidden">
+                                    {(!o.rawItems || o.rawItems.length === 0) ? (
+                                      <div className="text-xs text-center p-3 text-gray-500">لا توجد تفاصيل بنود</div>
+                                    ) : (
+                                      <table className="w-full text-xs text-right border-collapse">
+                                        <thead className="bg-gray-50 text-gray-500 border-b border-gray-100">
+                                          <tr>
+                                            <th className="p-2 font-medium">النوع</th>
+                                            <th className="p-2 font-medium text-center">الكمية</th>
+                                            <th className="p-2 font-medium text-center">السعر</th>
+                                            <th className="p-2 font-medium text-center">المقاس</th>
+                                            <th className="p-2 font-medium">الخشب</th>
+                                            <th className="p-2 font-medium">اللون</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-50">
+                                          {o.rawItems.map((it: any, idx: number) => (
+                                            <tr key={idx} className="bg-white hover:bg-gray-50/50 transition-colors">
+                                              <td className="p-2 font-medium">{it.doorType || "—"}</td>
+                                              <td className="p-2 text-center">{it.quantity || "—"}</td>
+                                              <td className="p-2 text-center text-gray-600">{it.unitPrice ? `${it.unitPrice.toLocaleString()} ر.س` : "—"}</td>
+                                              <td className="p-2 text-center text-gray-600" dir="ltr">{it.width && it.height ? `${it.width}×${it.height}` : "—"}</td>
+                                              <td className="p-2 text-gray-600">{it.woodType || "—"}</td>
+                                              <td className="p-2 text-gray-600">{it.color || "—"}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    )}
+                                  </div>
+
+                                  <div className="flex gap-2 pt-2">
                                     {o.status === "pending" && (
                                       <>
                                         <Button
