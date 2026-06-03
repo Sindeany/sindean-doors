@@ -116,6 +116,9 @@ const PAYMENT_STATUS: Record<PaymentStatus, { label: string; color: string; bg: 
   partial: { label: "دفع جزئي",       color: "#3B82F6", bg: "#EFF6FF" },
 };
 
+const DEFAULT_ORDER_STATUS = { label: "غير معروف", color: "#6B7280", bg: "#F3F4F6", icon: null };
+const DEFAULT_PAYMENT_STATUS = { label: "غير معروف", color: "#6B7280", bg: "#F3F4F6" };
+
 // ─── Distributor Info (mock by ID) ────────────────────────────
 const DISTRIBUTOR_INFO: Record<string, {
   name: string; company: string; city: string; region: string;
@@ -228,9 +231,9 @@ export default function AdminDistributorProfile() {
 
   const exportOrders = () => {
     const rows = filteredOrders.map(o => ({
-      "رقم الطلب": o.id, "التاريخ": o.date, "الحالة": ORDER_STATUS[o.status].label,
+      "رقم الطلب": o.id, "التاريخ": o.date, "الحالة": (ORDER_STATUS[o.status] ?? DEFAULT_ORDER_STATUS).label,
       "عدد المنتجات": o.items, "الإجمالي (ر.س)": o.total, "المدفوع (ر.س)": o.paid,
-      "حالة الدفع": PAYMENT_STATUS[o.paymentStatus].label, "رقم التتبع": o.trackingNumber || "—",
+      "حالة الدفع": (PAYMENT_STATUS[o.paymentStatus] ?? DEFAULT_PAYMENT_STATUS).label, "رقم التتبع": o.trackingNumber || "—",
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     ws["!cols"] = Array(8).fill({ wch: 20 });
@@ -244,7 +247,7 @@ export default function AdminDistributorProfile() {
     const rows = filteredPayments.map(p => ({
       "رقم الدفعة": p.id, "التاريخ": p.date, "المبلغ (ر.س)": p.amount,
       "طريقة الدفع": p.method, "المرجع": p.reference,
-      "الحالة": PAYMENT_STATUS[p.status].label, "رقم الطلب": p.orderId || "—", "ملاحظة": p.note || "—",
+      "الحالة": (PAYMENT_STATUS[p.status] ?? DEFAULT_PAYMENT_STATUS).label, "رقم الطلب": p.orderId || "—", "ملاحظة": p.note || "—",
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     ws["!cols"] = Array(8).fill({ wch: 20 });
@@ -396,7 +399,7 @@ export default function AdminDistributorProfile() {
                       <SectionHeader title="آخر الطلبات" count={5} />
                       <div className="space-y-2">
                         {orders.slice(-5).reverse().map((o) => {
-                          const sc = ORDER_STATUS[o.status];
+                          const sc = ORDER_STATUS[o.status] ?? DEFAULT_ORDER_STATUS;
                           return (
                             <div key={o.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
                               <div>
@@ -470,7 +473,7 @@ export default function AdminDistributorProfile() {
                           style={orderFilter === s
                             ? { background: "oklch(0.38 0.06 160)", color: "white" }
                             : { background: "#F3F4F6", color: "#6B7280" }}>
-                          {s === "all" ? "الكل" : ORDER_STATUS[s].label}
+                          {s === "all" ? "الكل" : (ORDER_STATUS[s as OrderStatus] ?? DEFAULT_ORDER_STATUS).label}
                         </button>
                       ))}
                     </div>
@@ -481,8 +484,8 @@ export default function AdminDistributorProfile() {
 
                   <div className="space-y-2">
                     {filteredOrders.map((o) => {
-                      const sc = ORDER_STATUS[o.status];
-                      const pc = PAYMENT_STATUS[o.paymentStatus];
+                      const sc = ORDER_STATUS[o.status] ?? DEFAULT_ORDER_STATUS;
+                      const pc = PAYMENT_STATUS[o.paymentStatus] ?? DEFAULT_PAYMENT_STATUS;
                       const isExpanded = expandedOrder === o.id;
                       return (
                         <div key={o.id} className="border border-gray-100 rounded-xl overflow-hidden">
@@ -597,7 +600,7 @@ export default function AdminDistributorProfile() {
                           style={paymentFilter === s
                             ? { background: "oklch(0.38 0.06 160)", color: "white" }
                             : { background: "#F3F4F6", color: "#6B7280" }}>
-                          {s === "all" ? "الكل" : PAYMENT_STATUS[s].label}
+                          {s === "all" ? "الكل" : (PAYMENT_STATUS[s as PaymentStatus] ?? DEFAULT_PAYMENT_STATUS).label}
                         </button>
                       ))}
                     </div>
@@ -632,7 +635,7 @@ export default function AdminDistributorProfile() {
                       </thead>
                       <tbody>
                         {filteredPayments.map((p, i) => {
-                          const pc = PAYMENT_STATUS[p.status];
+                          const pc = PAYMENT_STATUS[p.status] ?? DEFAULT_PAYMENT_STATUS;
                           return (
                             <motion.tr key={p.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}
                               className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
