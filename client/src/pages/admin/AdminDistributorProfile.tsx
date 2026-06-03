@@ -28,7 +28,7 @@ interface Order {
   id: string; date: string; status: OrderStatus;
   items: number; total: number; paid: number;
   paymentStatus: PaymentStatus; trackingNumber?: string;
-  products: string;
+  products: string; dbId?: number;
 }
 
 interface Complaint {
@@ -55,6 +55,7 @@ function mapOrderFromDB(o: any): Order { // o is raw order from trpc
   const items = o.items ?? [];
   return {
     id: o.orderNumber,
+    dbId: o.id,
     date: new Date(o.createdAt).toISOString().split("T")[0],
     status: mapStatus(o.status),
     items: items.length,
@@ -193,6 +194,11 @@ export default function AdminDistributorProfile() {
     { distributorId: String(id) },
     { retry: false }
   );
+
+  const utils = trpc.useUtils();
+  const updateStatusMutation = trpc.distributorOrders.updateStatus.useMutation({
+    onSuccess: () => { utils.distributorOrders.list.invalidate(); },
+  });
 
   if (isLoading) {
     return (
@@ -521,11 +527,32 @@ export default function AdminDistributorProfile() {
                                     <div className="text-xs text-gray-600"><span className="font-medium">رقم التتبع:</span> <span className="font-mono text-blue-600">{o.trackingNumber}</span></div>
                                   )}
                                   <div className="flex gap-2 pt-1">
-                                    <Button variant="outline" className="text-xs h-7 gap-1">
+                                    <Button variant="outline" className="text-xs h-7 gap-1" onClick={(e) => { e.stopPropagation(); setExpandedOrder(isExpanded ? null : o.id); }}>
                                       <Eye className="w-3.5 h-3.5" /> عرض الطلب
                                     </Button>
+                                    {o.status === "pending" && (
+                                      <>
+                                        <Button
+                                          className="text-xs h-7 gap-1 text-white"
+                                          style={{ background: "#10B981" }}
+                                          disabled={updateStatusMutation.isPending}
+                                          onClick={(e) => { e.stopPropagation(); if (o.dbId != null) updateStatusMutation.mutate({ id: o.dbId, status: "confirmed" }); }}
+                                        >
+                                          <CheckCircle2 className="w-3.5 h-3.5" /> موافقة
+                                        </Button>
+                                        <Button
+                                          variant="outline"
+                                          className="text-xs h-7 gap-1"
+                                          style={{ color: "#EF4444", borderColor: "#EF4444" }}
+                                          disabled={updateStatusMutation.isPending}
+                                          onClick={(e) => { e.stopPropagation(); if (o.dbId != null) updateStatusMutation.mutate({ id: o.dbId, status: "cancelled" }); }}
+                                        >
+                                          <XCircle className="w-3.5 h-3.5" /> رفض
+                                        </Button>
+                                      </>
+                                    )}
                                     {o.status === "shipped" && (
-                                      <Button className="text-xs h-7 gap-1 text-white" style={{ background: "#10B981" }}>
+                                      <Button className="text-xs h-7 gap-1 text-white" style={{ background: "#10B981" }} onClick={(e) => { e.stopPropagation(); if (o.dbId != null) updateStatusMutation.mutate({ id: o.dbId, status: "delivered" }); }}>
                                         <CheckCheck className="w-3.5 h-3.5" /> تأكيد التسليم
                                       </Button>
                                     )}
