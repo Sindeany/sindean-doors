@@ -17,7 +17,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import DistributorLayout from "@/components/distributor/DistributorLayout";
-import { mockOrders } from "@/lib/distributorData";
 import { useDistributorAuth } from "@/contexts/DistributorAuthContext";
 import { trpc } from "@/lib/trpc";
 
@@ -462,11 +461,12 @@ function EditComplaintModal({
 
 // ─── New Complaint Wizard ─────────────────────────────────────
 function NewComplaintWizard({
-  isOpen, onClose, onSubmit,
+  isOpen, onClose, onSubmit, orders,
 }: {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (c: Partial<ComplaintItem>) => void;
+  orders: { id: string; status: string; orderNumber: string; date: string; products: { name: string; qty: number }[] }[];
 }) {
   const { dir } = useLanguage();
   const isRtl = dir === "rtl";
@@ -478,7 +478,7 @@ function NewComplaintWizard({
   const [images, setImages] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const order = mockOrders.find((o) => o.id === selectedOrder);
+  const order = orders.find((o) => o.id === selectedOrder);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -581,7 +581,7 @@ function NewComplaintWizard({
                   <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                     <h3 className="font-semibold text-gray-800 mb-4">{isRtl ? "اختر الطلب والمنتج المتضرر" : "Select Order & Affected Product"}</h3>
                     <div className="space-y-3">
-                      {mockOrders.filter((o) => o.status !== "pending" && o.status !== "cancelled").map((o) => (
+                      {orders.filter((o) => o.status !== "pending" && o.status !== "cancelled").map((o) => (
                         <button
                           key={o.id}
                           onClick={() => { setSelectedOrder(o.id); setSelectedProduct(""); }}
@@ -957,8 +957,31 @@ export default function DistributorComplaints() {
   const { dir } = useLanguage();
   const isRtl = dir === "rtl";
   const { distributor } = useDistributorAuth();
+  const utils = trpc.useUtils();
+  const ordersQuery = trpc.distributors.myOrders.useQuery();
+  const wizardOrders = (ordersQuery.data || []).map((o: any) => ({
+    id: String(o.id),
+    status: o.status,
+    orderNumber: o.orderNumber,
+    date: new Date(Number(o.createdAt)).toISOString().slice(0, 10),
+    products: (Array.isArray(o.items) ? o.items : []).map((it: any) => ({
+      name: isRtl ? it.doorType : (it.doorTypeEn || it.doorType),
+      qty: it.quantity,
+    })),
+  }));
+
   const { data: rawComplaints, isLoading, isError } = trpc.complaints.myComplaints.useQuery(undefined, { retry: false, enabled: !!distributor });
   const complaints: ComplaintItem[] = (rawComplaints ?? []).map(mapComplaintFromDB);
+
+  const submitMutation = trpc.complaints.submitComplaint.useMutation({
+    onSuccess: () => {
+      utils.complaints.myComplaints.invalidate();
+      toast.success(isRtl ? "تم إرسال الشكوى بنجاح" : "Complaint submitted successfully");
+    },
+    onError: (err) => {
+      toast.error(err.message || (isRtl ? "فشل إرسال الشكوى" : "Failed to submit complaint"));
+    },
+  });
 
   const [showNewWizard, setShowNewWizard] = useState(false);
   const [selectedComplaint, setSelectedComplaint] = useState<ComplaintItem | null>(null);
@@ -981,7 +1004,17 @@ export default function DistributorComplaints() {
   };
 
   const handleNewComplaint = (data: Partial<ComplaintItem>) => {
-    toast.info(isRtl ? "سيتم تفعيل إرسال الشكاوى قريباً" : "Complaint submission will be enabled soon");
+    if (!data.type) {
+      toast.error(isRtl ? "يرجى تحديد نوع الشكوى" : "Please select a complaint type");
+      return;
+    }
+    submitMutation.mutate({
+      orderNumber: data.orderNumber || "",
+      product: data.productName || "",
+      type: data.type,
+      description: data.description || "",
+      images: data.images?.length || 0,
+    });
     setShowNewWizard(false);
   };
 
@@ -1213,7 +1246,8 @@ export default function DistributorComplaints() {
       </div>
 
       {/* Modals */}
-      <NewComplaintWizard isOpen={showNewWizard} onClose={() => setShowNewWizard(false)} onSubmit={handleNewComplaint} />
+      <NewComplaintWizard isOpen={showNewWizard} onClose={() => setShowNewWizard(false)} onSubmit={handleNewComplaint}
+        orders={wizardOrders} />
       {selectedComplaint && (
         <ComplaintDetailModal
           complaint={selectedComplaint}
