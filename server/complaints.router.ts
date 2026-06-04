@@ -27,19 +27,23 @@ const complaintTypeEnum = z.enum([
 
 export const complaintsRouter = router({
   // ── List all complaints with their messages ──────────────────────────────
-  list: adminProcedure.query(async () => {
-    const rows = await db.query.complaints.findMany({
-      orderBy: [desc(schema.complaints.createdAt)],
-    });
-    const messages = await db.query.complaintMessages.findMany({
-      orderBy: [desc(schema.complaintMessages.createdAt)],
-    });
-    // Attach messages to each complaint
-    return rows.map(c => ({
-      ...c,
-      messages: messages.filter(m => m.complaintId === c.id),
-    }));
-  }),
+  list: adminProcedure
+    .input(z.object({ distributorId: z.number().int().optional() }).optional())
+    .query(async ({ input }) => {
+      const rows = await db.query.complaints.findMany({
+        where: input?.distributorId !== undefined
+          ? eq(schema.complaints.distributorId, input.distributorId)
+          : undefined,
+        orderBy: [desc(schema.complaints.createdAt)],
+      });
+      const messages = await db.query.complaintMessages.findMany({
+        orderBy: [desc(schema.complaintMessages.createdAt)],
+      });
+      return rows.map(c => ({
+        ...c,
+        messages: messages.filter(m => m.complaintId === c.id),
+      }));
+    }),
 
   // ── Create a new complaint ────────────────────────────────────────────────
   create: adminProcedure

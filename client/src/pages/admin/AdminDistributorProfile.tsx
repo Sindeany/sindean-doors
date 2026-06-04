@@ -69,14 +69,6 @@ function mapOrderFromDB(o: any): Order { // o is raw order from trpc
   };
 }
 
-const mockComplaints: Complaint[] = [
-  { id: "CMP-001", date: "2024-08-10", status: "resolved",  type: "كسر",   orderId: "ORD-2024-003", description: "وصلت 3 أبواب مكسورة في الزوايا", rating: 5, resolvedDate: "2024-08-15" },
-  { id: "CMP-002", date: "2024-11-22", status: "resolved",  type: "لون",   orderId: "ORD-2024-005", description: "اللون لا يطابق العينة المطلوبة", rating: 4, resolvedDate: "2024-11-28" },
-  { id: "CMP-003", date: "2025-03-05", status: "resolved",  type: "تأخير", orderId: "ORD-2025-001", description: "تأخر التسليم أسبوعاً عن الموعد المحدد", rating: 3, resolvedDate: "2025-03-10" },
-  { id: "CMP-004", date: "2025-07-14", status: "resolved",  type: "مقاس",  orderId: "ORD-2025-003", description: "مقاس بابين لا يطابق المواصفات المطلوبة", rating: 4, resolvedDate: "2025-07-20" },
-  { id: "CMP-005", date: "2025-11-30", status: "in_review", type: "نقص",   orderId: "ORD-2025-005", description: "نقص 2 باب من الطلبية" },
-];
-
 const mockPayments: Payment[] = [
   { id: "PAY-001", date: "2024-04-12", amount: 48000, method: "تحويل بنكي", reference: "TRF-2024-001", status: "paid",    orderId: "ORD-2024-001" },
   { id: "PAY-002", date: "2024-05-25", amount: 32000, method: "تحويل بنكي", reference: "TRF-2024-002", status: "paid",    orderId: "ORD-2024-002" },
@@ -191,6 +183,8 @@ export default function AdminDistributorProfile() {
       { retry: false, enabled: Number.isFinite(distId) && distId > 0 }
     );
 
+  const { data: rawComplaints } = trpc.complaints.list.useQuery({ distributorId: distId }, { enabled: Number.isFinite(distId) });
+
   if (distLoading) {
     return (
       <AdminLayout title="ملف الموزع" subtitle="جاري التحميل" backHref="/admin/distributors">
@@ -239,6 +233,24 @@ export default function AdminDistributorProfile() {
 
   const orders: Order[] = (rawOrders ?? []).map(mapOrderFromDB);
 
+  const COMPLAINT_TYPE_AR: Record<string, string> = {
+    size: "مقاس", color: "لون", damage: "كسر", shortage: "نقص", delay: "تأخير", quality: "جودة", other: "أخرى",
+  };
+  const mapStatus = (s: string): ComplaintStatus =>
+    s === "under_review" || s === "return_pending" ? "in_review"
+    : s === "open" || s === "resolved" || s === "rejected" ? s
+    : "in_review";
+  const complaints: Complaint[] = (rawComplaints ?? []).map((c: any) => ({ // any: raw server row
+    id: c.ticketNumber,
+    date: c.createdAt ? new Date(Number(c.createdAt)).toISOString().slice(0, 10) : "",
+    status: mapStatus(c.status),
+    type: COMPLAINT_TYPE_AR[c.type] ?? c.type,
+    orderId: c.orderNumber || "",
+    description: c.description || "",
+    rating: c.satisfactionRating ?? undefined,
+    resolvedDate: c.resolvedAt ? new Date(Number(c.resolvedAt)).toISOString().slice(0, 10) : undefined,
+  }));
+
   // Computed stats
   const totalRevenue   = dist.totalRevenue;
   const pendingAmount  = orders.filter(o => o.paymentStatus !== "paid").reduce((s, o) => s + (o.total - o.paid), 0);
@@ -281,7 +293,7 @@ export default function AdminDistributorProfile() {
   const tabs = [
     { id: "overview",   label: "نظرة عامة",    icon: <BarChart2 className="w-4 h-4" /> },
     { id: "orders",     label: "الطلبات",       icon: <ShoppingBag className="w-4 h-4" />, count: orders.length },
-    { id: "complaints", label: "الشكاوى",       icon: <AlertCircle className="w-4 h-4" />, count: mockComplaints.length },
+    { id: "complaints", label: "الشكاوى",       icon: <AlertCircle className="w-4 h-4" />, count: complaints.length },
     { id: "payments",   label: "سجل المدفوعات", icon: <DollarSign className="w-4 h-4" />,  count: mockPayments.length },
   ] as const;
 
@@ -441,9 +453,9 @@ export default function AdminDistributorProfile() {
 
                     {/* Recent Complaints */}
                     <div>
-                      <SectionHeader title="آخر الشكاوى" count={mockComplaints.length} />
+                      <SectionHeader title="آخر الشكاوى" count={complaints.length} />
                       <div className="space-y-2">
-                        {mockComplaints.slice(-5).reverse().map((c) => {
+                        {complaints.slice(-5).reverse().map((c) => {
                           const cs = COMPLAINT_STATUS[c.status];
                           return (
                             <div key={c.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
@@ -621,9 +633,9 @@ export default function AdminDistributorProfile() {
               {/* ── Complaints Tab ── */}
               {activeTab === "complaints" && (
                 <motion.div key="complaints" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                  <SectionHeader title="سجل الشكاوى" count={mockComplaints.length} />
+                  <SectionHeader title="سجل الشكاوى" count={complaints.length} />
                   <div className="space-y-3">
-                    {mockComplaints.map((c) => {
+                    {complaints.map((c) => {
                       const cs = COMPLAINT_STATUS[c.status];
                       return (
                         <div key={c.id} className="p-4 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
