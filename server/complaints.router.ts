@@ -52,7 +52,7 @@ export const complaintsRouter = router({
         product: z.string().min(1),
         type: complaintTypeEnum,
         description: z.string().min(1),
-        images: z.number().int().default(0),
+        images: z.array(z.string()).default([]),
       })
     )
     .mutation(async ({ input }) => {
@@ -151,7 +151,7 @@ export const complaintsRouter = router({
         product: z.string().min(1),
         type: complaintTypeEnum,
         description: z.string().min(1),
-        images: z.number().int().default(0),
+        images: z.array(z.string()).default([]),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -232,7 +232,7 @@ export const complaintsRouter = router({
         type: "damage" as const,
         status: "open" as const,
         description: "وصلت الشحنة وبها كسر واضح في إطار الباب الأول من الأسفل.",
-        images: 3,
+        images: [],
         createdAt: now - 6 * 86400000,
         updatedAt: now - 6 * 86400000,
       },
@@ -246,7 +246,7 @@ export const complaintsRouter = router({
         status: "under_review" as const,
         description:
           "اللون المستلم مختلف تماماً عن العينة المعتمدة. طلبنا الجوزي الداكن ووصل العسلي الفاتح.",
-        images: 2,
+        images: [],
         createdAt: now - 8 * 86400000,
         updatedAt: now - 7 * 86400000,
       },
@@ -259,7 +259,7 @@ export const complaintsRouter = router({
         type: "shortage" as const,
         status: "resolved" as const,
         description: "الطلب كان 6 أبواب، وصل 5 أبواب فقط.",
-        images: 1,
+        images: [],
         satisfactionRating: 5,
         resolvedAt: now - 3 * 86400000,
         createdAt: now - 14 * 86400000,

@@ -60,7 +60,7 @@ function mapComplaintFromDB(c: any): ComplaintItem { // any: شكل السجل �
     status: c.status,
     createdAt: c.createdAt ? new Date(c.createdAt).toISOString().split("T")[0] : "",
     updatedAt: c.updatedAt ? new Date(c.updatedAt).toISOString().split("T")[0] : "",
-    images: [],
+    images: Array.isArray(c.images) ? c.images : [],
     resolution: undefined,
     timeline: (c.messages ?? []).map((m: any) => ({
       date: m.date,
@@ -1062,7 +1062,7 @@ export default function DistributorComplaints() {
       product: data.productName || "",
       type: data.type,
       description: data.description || "",
-      images: data.images?.length || 0,
+      images: data.images || [],
     });
     setShowNewWizard(false);
   };

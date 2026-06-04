@@ -159,7 +159,7 @@ export const customerPortalRouter = router({
         product: input.product,
         type: input.type,
         description: input.description,
-        images: 0,
+        images: [],
         createdAt: now,
         updatedAt: now,
       });

@@ -66,7 +66,7 @@ interface Complaint {
   createdAt: string;
   updatedAt: string;
   description: string;
-  images: number;
+  images: string[];
   satisfactionRating?: number;
   messages: ComplaintMessage[];
 }
@@ -85,7 +85,7 @@ function mapDbComplaint(row: any): Complaint {
     createdAt: new Date(row.createdAt).toISOString().split("T")[0],
     updatedAt: new Date(row.updatedAt).toISOString().split("T")[0],
     description: row.description,
-    images: row.images ?? 0,
+    images: Array.isArray(row.images) ? row.images : [],
     satisfactionRating: row.satisfactionRating ?? undefined,
     messages: (row.messages ?? []).map((m: any) => ({
       from: m.from as "admin" | "distributor",
@@ -279,12 +279,20 @@ function ComplaintDetailModal({
               <p className="text-sm text-gray-700 leading-relaxed">
                 {complaint.description}
               </p>
-              {complaint.images > 0 && (
-                <div className="flex items-center gap-1.5 mt-2 text-xs text-blue-600">
-                  <Eye className="w-3.5 h-3.5" />
-                  {isRtl
-                    ? `${complaint.images} صور مرفقة`
-                    : `${complaint.images} images attached`}
+              {complaint.images.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-xs text-gray-500 mb-2">
+                    {isRtl ? `الصور المرفقة (${complaint.images.length})` : `Attached images (${complaint.images.length})`}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {complaint.images.map((src, i) => (
+                      <a key={i} href={src} target="_blank" rel="noopener noreferrer"
+                        className="block w-16 h-16 rounded-lg overflow-hidden border hover:opacity-90 transition-opacity"
+                        style={{ borderColor: "oklch(0.92 0.004 286.32)" }}>
+                        <img src={src} alt={`attachment-${i + 1}`} className="w-full h-full object-cover" />
+                      </a>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

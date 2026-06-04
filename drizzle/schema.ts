@@ -640,7 +640,7 @@ export const complaints = mysqlTable("complaints", {
     .notNull()
     .default("open"),
   description: text("description").notNull(),
-  images: int("images").notNull().default(0),
+  images: json("images").$type<string[]>().notNull().default([]),
   satisfactionRating: int("satisfaction_rating"),
   resolvedAt: bigint("resolved_at", { mode: "number" }),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
