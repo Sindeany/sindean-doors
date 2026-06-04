@@ -240,10 +240,10 @@ export default function AdminDistributorProfile() {
   const orders: Order[] = (rawOrders ?? []).map(mapOrderFromDB);
 
   // Computed stats
-  const totalRevenue   = mockPayments.filter(p => p.status === "paid").reduce((s, p) => s + p.amount, 0);
+  const totalRevenue   = dist.totalRevenue;
   const pendingAmount  = orders.filter(o => o.paymentStatus !== "paid").reduce((s, o) => s + (o.total - o.paid), 0);
-  const avgRating      = mockComplaints.filter(c => c.rating).reduce((s, c, _, a) => s + (c.rating! / a.length), 0);
-  const openComplaints = mockComplaints.filter(c => c.status === "open" || c.status === "in_review").length;
+  const avgRating      = dist.avgRating;
+  const openComplaints = dist.openComplaints;
 
   const filteredOrders = orders.filter(o => orderFilter === "all" || o.status === orderFilter);
   const filteredPayments = mockPayments.filter(p => paymentFilter === "all" || p.status === paymentFilter);
@@ -388,7 +388,7 @@ export default function AdminDistributorProfile() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard icon={<ShoppingBag className="w-4 h-4" />} label="إجمالي الطلبات"   value={orders.length}                              sub={`${orders.filter(o => o.status === "pending" || o.status === "approved").length} نشط`} color="#3B82F6" bg="#EFF6FF" />
           <StatCard icon={<DollarSign className="w-4 h-4" />}  label="إجمالي الإيرادات" value={`${(totalRevenue/1000).toFixed(0)}K ر.س`}       sub={`متأخر: ${(pendingAmount/1000).toFixed(0)}K`}                                              color="#10B981" bg="#ECFDF5" />
-          <StatCard icon={<AlertCircle className="w-4 h-4" />} label="الشكاوى"           value={mockComplaints.length}                           sub={`${openComplaints} مفتوحة`}                                                                color={openComplaints > 0 ? "#EF4444" : "#10B981"} bg={openComplaints > 0 ? "#FEF2F2" : "#ECFDF5"} />
+          <StatCard icon={<AlertCircle className="w-4 h-4" />} label="الشكاوى المفتوحة"  value={openComplaints}                                  sub={openComplaints > 0 ? "تحتاج للمتابعة" : "لا توجد شكاوى نشطة"}                              color={openComplaints > 0 ? "#EF4444" : "#10B981"} bg={openComplaints > 0 ? "#FEF2F2" : "#ECFDF5"} />
           <StatCard icon={<Star className="w-4 h-4" />}        label="متوسط التقييم"     value={avgRating > 0 ? avgRating.toFixed(1) + " ★" : "—"} sub="تقييم حل الشكاوى"                                                                          color="#F59E0B" bg="#FFFBEB" />
         </div>
 
