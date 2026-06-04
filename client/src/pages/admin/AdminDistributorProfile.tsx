@@ -122,22 +122,6 @@ const PAYMENT_STATUS: Record<PaymentStatus, { label: string; color: string; bg: 
 const DEFAULT_ORDER_STATUS = { label: "غير معروف", color: "#6B7280", bg: "#F3F4F6", icon: null };
 const DEFAULT_PAYMENT_STATUS = { label: "غير معروف", color: "#6B7280", bg: "#F3F4F6" };
 
-// ─── Distributor Info (mock by ID) ────────────────────────────
-const DISTRIBUTOR_INFO: Record<string, {
-  name: string; company: string; city: string; region: string;
-  phone: string; email: string; whatsapp?: string; website?: string;
-  commercialReg?: string; vatNumber?: string; bankName?: string;
-  tier: "bronze" | "silver" | "gold" | "platinum";
-  status: "active" | "pending" | "suspended" | "rejected";
-  joinDate: string; contractEnd?: string; creditLimit?: number;
-  discountRate?: number; adminNotes?: string;
-}> = {
-  "D001": { name: "أحمد الزهراني", company: "شركة النخبة للمقاولات", city: "الرياض", region: "الرياض", phone: "0501234567", email: "ahmed@nakhba.sa", whatsapp: "0501234567", commercialReg: "1010123456", vatNumber: "300123456700003", bankName: "البنك الأهلي", tier: "gold", status: "active", joinDate: "2024-03-15", contractEnd: "2026-03-15", creditLimit: 200000, discountRate: 15, adminNotes: "موزع متميز، يُنصح بترقيته لبلاتيني" },
-  "D002": { name: "محمد العمري",   company: "مؤسسة البناء الحديث",   city: "جدة",    region: "مكة المكرمة", phone: "0557891234", email: "m.omari@bena.sa", tier: "silver", status: "active", joinDate: "2024-06-20", contractEnd: "2026-06-20", creditLimit: 100000, discountRate: 10 },
-  "D003": { name: "خالد الغامدي",  company: "شركة الإعمار للتطوير",  city: "الدمام", region: "الشرقية",     phone: "0509876543", email: "k.ghamdi@emar.sa", tier: "silver", status: "active", joinDate: "2024-08-10", contractEnd: "2026-08-10", creditLimit: 80000, discountRate: 10 },
-  "D004": { name: "فهد القحطاني",  company: "مجموعة الفيصل العقارية",city: "مكة",    region: "مكة المكرمة", phone: "0551234567", email: "fahad@faisal.sa", tier: "platinum", status: "active", joinDate: "2023-11-05", contractEnd: "2025-11-05", creditLimit: 500000, discountRate: 20 },
-};
-
 const TIER_CFG = {
   bronze:   { label: "برونزي",  color: "#92400E", bg: "#FEF3C7", icon: <Award className="w-3.5 h-3.5" /> },
   silver:   { label: "فضي",     color: "#6B7280", bg: "#F3F4F6", icon: <Star className="w-3.5 h-3.5" /> },
