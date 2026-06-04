@@ -10,7 +10,7 @@ import {
   ChevronRight, ChevronLeft, X, Package, Ruler, Palette,
   Truck, AlertTriangle, MessageSquare, Eye, FileText,
   RefreshCw, ArrowLeft, Image as ImageIcon, Send, Star,
-  ThumbsUp, Smile, Meh, Frown, ThumbsDown, Pencil, Save, Lock,
+  ThumbsUp, Smile, Meh, Frown, ThumbsDown, Pencil, Save, Lock, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,9 +18,11 @@ import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import DistributorLayout from "@/components/distributor/DistributorLayout";
 import { mockOrders } from "@/lib/distributorData";
+import { useDistributorAuth } from "@/contexts/DistributorAuthContext";
+import { trpc } from "@/lib/trpc";
 
 // ─── Types ──────────────────────────────────────────────────
-type ComplaintStatus = "open" | "under_review" | "resolved" | "rejected" | "awaiting_return";
+type ComplaintStatus = "open" | "under_review" | "resolved" | "rejected" | "return_pending";
 type ComplaintType = "size" | "color" | "damage" | "shortage" | "delay" | "quality" | "other";
 
 interface SatisfactionRatingData {
@@ -46,48 +48,32 @@ interface ComplaintItem {
   satisfactionRating?: SatisfactionRatingData;
 }
 
-// ─── Mock Data ───────────────────────────────────────────────
-const mockComplaints: ComplaintItem[] = [
-  {
-    id: "CMP-001",
-    ticketNumber: "TKT-2026-0018",
-    orderId: "ORD-003",
-    orderNumber: "SND-2026-0035",
-    productName: "باب رئيسي فاخر محفور",
-    type: "damage",
-    description: "وصل الباب مع خدش واضح في الجهة اليمنى من الإطار الخارجي.",
-    status: "under_review",
-    createdAt: "2026-04-11",
-    updatedAt: "2026-04-13",
+// يحوّل شكل الخادم (myComplaints) إلى شكل الواجهة ComplaintItem دون تغيير كود العرض
+function mapComplaintFromDB(c: any): ComplaintItem { // any: شكل السجل الخادمي — معلّق عمداً
+  return {
+    id: String(c.id),
+    ticketNumber: c.ticketNumber,
+    orderId: "",
+    orderNumber: c.orderNumber,
+    productName: c.product,
+    type: c.type,
+    description: c.description,
+    status: c.status,
+    createdAt: c.createdAt ? new Date(c.createdAt).toISOString().split("T")[0] : "",
+    updatedAt: c.updatedAt ? new Date(c.updatedAt).toISOString().split("T")[0] : "",
     images: [],
-    timeline: [
-      { date: "2026-04-11", action: "تم فتح الشكوى", by: "محمد العمري" },
-      { date: "2026-04-12", action: "تم استلام الشكوى وتحويلها لفريق الجودة", by: "فريق سنديان" },
-      { date: "2026-04-13", action: "جارٍ مراجعة الصور والتحقق من الشحنة", by: "فريق الجودة" },
-    ],
-  },
-  {
-    id: "CMP-002",
-    ticketNumber: "TKT-2026-0014",
-    orderId: "ORD-004",
-    orderNumber: "SND-2026-0029",
-    productName: "باب داخلي ساج طبيعي",
-    type: "shortage",
-    description: "استلمنا 28 باباً فقط بدلاً من 30 باباً المطلوبة.",
-    status: "resolved",
-    createdAt: "2026-04-01",
-    updatedAt: "2026-04-05",
-    images: [],
-    resolution: "تم إرسال الوحدتين الناقصتين وتسليمهما بتاريخ 2026-04-05.",
-    timeline: [
-      { date: "2026-04-01", action: "تم فتح الشكوى", by: "محمد العمري" },
-      { date: "2026-04-02", action: "تم التحقق من أمر الشحن وتأكيد النقص", by: "فريق المستودع" },
-      { date: "2026-04-03", action: "تم إعداد الوحدتين الناقصتين للشحن", by: "فريق الإنتاج" },
-      { date: "2026-04-05", action: "تم تسليم الوحدتين الناقصتين", by: "فريق التوصيل" },
-    ],
-    // no rating yet — user will be prompted
-  },
-];
+    resolution: undefined,
+    timeline: (c.messages ?? []).map((m: any) => ({
+      date: m.date,
+      action: m.text,
+      by: m.from === "admin" ? "إدارة سنديان" : "الموزّع",
+    })),
+    satisfactionRating:
+      c.satisfactionRating != null
+        ? { score: c.satisfactionRating, comment: "", submittedAt: "" }
+        : undefined,
+  };
+}
 
 // ─── Config ──────────────────────────────────────────────────
 const COMPLAINT_TYPES: {
@@ -108,7 +94,7 @@ const STATUS_CONFIG: Record<ComplaintStatus, { label: string; labelEn: string; c
   under_review:    { label: "قيد المراجعة",         labelEn: "Under Review",     color: "#F59E0B", bg: "#FFFBEB", icon: <RefreshCw className="w-3.5 h-3.5" /> },
   resolved:        { label: "تم الحل",              labelEn: "Resolved",         color: "#10B981", bg: "#ECFDF5", icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
   rejected:        { label: "مرفوضة",              labelEn: "Rejected",         color: "#EF4444", bg: "#FEF2F2", icon: <XCircle className="w-3.5 h-3.5" /> },
-  awaiting_return: { label: "في انتظار الإرجاع",   labelEn: "Awaiting Return",  color: "#8B5CF6", bg: "#F5F3FF", icon: <ArrowLeft className="w-3.5 h-3.5" /> },
+  return_pending: { label: "في انتظار الإرجاع",   labelEn: "Awaiting Return",  color: "#8B5CF6", bg: "#F5F3FF", icon: <ArrowLeft className="w-3.5 h-3.5" /> },
 };
 
 // ─── Rating labels per score ─────────────────────────────────
@@ -970,7 +956,10 @@ function ComplaintDetailModal({
 export default function DistributorComplaints() {
   const { dir } = useLanguage();
   const isRtl = dir === "rtl";
-  const [complaints, setComplaints] = useState<ComplaintItem[]>(mockComplaints);
+  const { distributor } = useDistributorAuth();
+  const { data: rawComplaints, isLoading, isError } = trpc.complaints.myComplaints.useQuery(undefined, { retry: false, enabled: !!distributor });
+  const complaints: ComplaintItem[] = (rawComplaints ?? []).map(mapComplaintFromDB);
+
   const [showNewWizard, setShowNewWizard] = useState(false);
   const [selectedComplaint, setSelectedComplaint] = useState<ComplaintItem | null>(null);
   const [editingComplaint, setEditingComplaint] = useState<ComplaintItem | null>(null);
@@ -988,32 +977,16 @@ export default function DistributorComplaints() {
     total: complaints.length,
     open: complaints.filter((c) => c.status === "open" || c.status === "under_review").length,
     resolved: complaints.filter((c) => c.status === "resolved").length,
-    awaiting: complaints.filter((c) => c.status === "awaiting_return").length,
+    awaiting: complaints.filter((c) => c.status === "return_pending").length,
   };
 
   const handleNewComplaint = (data: Partial<ComplaintItem>) => {
-    const newComplaint: ComplaintItem = {
-      id: `CMP-${Date.now()}`,
-      ticketNumber: `TKT-2026-${String(Math.floor(Math.random() * 9000) + 1000)}`,
-      orderId: data.orderId || "",
-      orderNumber: data.orderNumber || "",
-      productName: data.productName || "",
-      type: data.type || "other",
-      description: data.description || "",
-      status: "open",
-      createdAt: new Date().toISOString().split("T")[0],
-      updatedAt: new Date().toISOString().split("T")[0],
-      images: data.images || [],
-      timeline: [{ date: new Date().toISOString().split("T")[0], action: isRtl ? "تم فتح الشكوى" : "Complaint opened", by: isRtl ? "محمد العمري" : "Mohammed Al-Omari" }],
-    };
-    setComplaints((prev) => [newComplaint, ...prev]);
+    toast.info(isRtl ? "سيتم تفعيل إرسال الشكاوى قريباً" : "Complaint submission will be enabled soon");
+    setShowNewWizard(false);
   };
 
   const handleRate = (id: string, rating: SatisfactionRatingData) => {
-    setComplaints((prev) =>
-      prev.map((c) => c.id === id ? { ...c, satisfactionRating: rating } : c)
-    );
-    setSelectedComplaint((prev) => prev?.id === id ? { ...prev, satisfactionRating: rating } : prev);
+    toast.info(isRtl ? "سيتم تفعيل التقييم قريباً" : "Rating will be enabled soon");
   };
 
   const handleEdit = (complaint: ComplaintItem) => {
@@ -1024,34 +997,25 @@ export default function DistributorComplaints() {
     id: string,
     changes: Pick<ComplaintItem, "type" | "description" | "images">
   ) => {
-    const today = new Date().toISOString().split("T")[0];
-    setComplaints((prev) =>
-      prev.map((c) =>
-        c.id === id
-          ? {
-              ...c,
-              ...changes,
-              updatedAt: today,
-              timeline: [
-                ...c.timeline,
-                {
-                  date: today,
-                  action: isRtl ? "تم تعديل الشكوى من قِبل الموزع" : "Complaint edited by distributor",
-                  by: isRtl ? "محمد العمري" : "Mohammed Al-Omari",
-                },
-              ],
-            }
-          : c
-      )
-    );
-    // Sync detail modal if open
-    setSelectedComplaint((prev) =>
-      prev?.id === id
-        ? { ...prev, ...changes, updatedAt: today }
-        : prev
-    );
+    toast.info(isRtl ? "سيتم تفعيل حفظ التعديلات قريباً" : "Saving changes will be enabled soon");
     setEditingComplaint(null);
   };
+
+  if (isLoading) {
+    return (
+      <DistributorLayout title={isRtl ? "مركز الشكاوى والمرتجعات" : "Complaints & Returns"} subtitle={isRtl ? "تابع شكاواك وافتح طلبات مرتجعات بسهولة" : "Track complaints and submit return requests easily"}>
+        <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
+      </DistributorLayout>
+    );
+  }
+
+  if (isError) {
+    return (
+      <DistributorLayout title={isRtl ? "مركز الشكاوى والمرتجعات" : "Complaints & Returns"} subtitle={isRtl ? "تابع شكاواك وافتح طلبات مرتجعات بسهولة" : "Track complaints and submit return requests easily"}>
+        <div className="text-center py-20 text-red-500">{isRtl ? "تعذّر تحميل الشكاوى" : "Failed to load complaints"}</div>
+      </DistributorLayout>
+    );
+  }
 
   return (
     <DistributorLayout
@@ -1098,7 +1062,7 @@ export default function DistributorComplaints() {
         {/* Actions & Filters */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex flex-wrap gap-2">
-            {(["all", "open", "under_review", "resolved", "awaiting_return", "rejected"] as const).map((s) => {
+            {(["all", "open", "under_review", "resolved", "return_pending", "rejected"] as const).map((s) => {
               const cfg = s === "all"
                 ? { label: isRtl ? "الكل" : "All", labelEn: "All", color: "#374151", bg: "#F3F4F6" }
                 : STATUS_CONFIG[s];
