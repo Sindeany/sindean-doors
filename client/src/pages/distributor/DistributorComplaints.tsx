@@ -476,6 +476,7 @@ function NewComplaintWizard({
   const [selectedType, setSelectedType] = useState<ComplaintType | "">("");
   const [description, setDescription] = useState("");
   const [images, setImages] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const order = orders.find((o) => o.id === selectedOrder);
@@ -493,20 +494,50 @@ function NewComplaintWizard({
     });
   };
 
-  const handleSubmit = () => {
+  const uploadImages = async (base64List: string[]): Promise<string[]> => {
+    const urls: string[] = [];
+    for (const img of base64List) {
+      if (!img.startsWith("data:")) {
+        urls.push(img);
+        continue;
+      }
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: img, filename: `complaint-${Date.now()}-${urls.length}` }),
+      });
+      if (!res.ok) {
+        throw new Error(isRtl ? "فشل رفع إحدى الصور" : "Failed to upload an image");
+      }
+      const { url } = (await res.json()) as { url: string };
+      urls.push(url);
+    }
+    return urls;
+  };
+
+  const handleSubmit = async () => {
     if (!selectedOrder || !selectedType || !description.trim()) {
       toast.error(isRtl ? "يرجى إكمال جميع الحقول المطلوبة" : "Please fill all required fields");
       return;
     }
+    setIsUploading(true);
+    let uploadedUrls: string[] = [];
+    try {
+      uploadedUrls = await uploadImages(images);
+    } catch (err) {
+      setIsUploading(false);
+      toast.error(err instanceof Error ? err.message : (isRtl ? "فشل رفع الصور" : "Image upload failed"));
+      return;
+    }
+    setIsUploading(false);
     onSubmit({
       orderId: selectedOrder,
       orderNumber: order?.orderNumber || "",
       productName: selectedProduct || order?.products[0]?.name || "",
       type: selectedType as ComplaintType,
       description,
-      images,
+      images: uploadedUrls,
     });
-    toast.success(isRtl ? "تم فتح الشكوى بنجاح! سنتواصل معك خلال 24 ساعة." : "Complaint submitted! We'll contact you within 24 hours.");
     onClose();
     setStep(1); setSelectedOrder(""); setSelectedProduct(""); setSelectedType(""); setDescription(""); setImages([]);
   };
@@ -781,11 +812,12 @@ function NewComplaintWizard({
               ) : (
                 <Button
                   onClick={handleSubmit}
-                  className="gap-2 text-white"
+                  disabled={isUploading}
+                  className="gap-2 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ background: "oklch(0.38 0.06 160)" }}
                 >
                   <Send className="w-4 h-4" />
-                  {isRtl ? "إرسال الشكوى" : "Submit Complaint"}
+                  {isUploading ? (isRtl ? "جارٍ الرفع..." : "Uploading...") : (isRtl ? "إرسال الشكوى" : "Submit Complaint")}
                 </Button>
               )}
             </div>
