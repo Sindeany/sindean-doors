@@ -10,6 +10,7 @@ import {
   float,
   boolean,
   tinyint,
+  timestamp,
 } from "drizzle-orm/mysql-core";
 
 // ── Door Orders ──────────────────────────────────────────────────────────────
@@ -319,6 +320,48 @@ export const distributorOrders = mysqlTable("distributor_orders", {
 
 export type DistributorOrder = typeof distributorOrders.$inferSelect;
 export type NewDistributorOrder = typeof distributorOrders.$inferInsert;
+
+// ── Distributor Payments ──────────────────────────────────
+export const distributorPaymentMethodEnum = mysqlEnum("method", [
+  "cash",
+  "bank_transfer",
+  "cheque",
+  "card",
+  "other",
+]);
+
+export const distributorPaymentStatusEnum = mysqlEnum("status", [
+  "confirmed",
+  "pending",
+  "cancelled",
+]);
+
+export const distributorPayments = mysqlTable("distributor_payments", {
+  id: int("id").primaryKey().autoincrement(),
+  distributorId: int("distributor_id").notNull(),
+  orderNumber: varchar("order_number", { length: 50 }),
+  amount: float("amount").notNull(),
+  method: mysqlEnum("method", [
+    "cash",
+    "bank_transfer",
+    "cheque",
+    "card",
+    "other",
+  ]).notNull().default("bank_transfer"),
+  reference: varchar("reference", { length: 191 }),
+  note: text("note"),
+  paymentDate: timestamp("payment_date").notNull().defaultNow(),
+  status: mysqlEnum("status", [
+    "confirmed",
+    "pending",
+    "cancelled",
+  ]).notNull().default("confirmed"),
+  journalEntryId: int("journal_entry_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type DistributorPayment = typeof distributorPayments.$inferSelect;
+export type NewDistributorPayment = typeof distributorPayments.$inferInsert;
 
 // ── ZATCA Tax Invoices ────────────────────────────────────────────────────────
 // الفواتير الضريبية الإلكترونية المتوافقة مع متطلبات هيئة الزكاة والضريبة والجمارك
