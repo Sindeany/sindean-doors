@@ -1,10 +1,11 @@
 // ============================================================
 // Complaints Router — CRUD + messages for admin complaints management
 // ============================================================
+import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 import { db, schema } from "./db.js";
 import { eq, desc, and } from "drizzle-orm";
-import { router, adminProcedure } from "./trpc.js";
+import { router, adminProcedure, distributorProcedure } from "./trpc.js";
 
 const complaintStatusEnum = z.enum([
   "open",
@@ -121,6 +122,95 @@ export const complaintsRouter = router({
           createdAt: now,
         });
       }
+      return { success: true };
+    }),
+
+  // ── myComplaints (Distributor) ──────────────────────────────────────────
+  myComplaints: distributorProcedure.query(async ({ ctx }) => {
+    const rows = await db.query.complaints.findMany({
+      where: eq(schema.complaints.distributorId, ctx.distributor.id),
+      orderBy: [desc(schema.complaints.createdAt)],
+    });
+    const ids = rows.map((c) => c.id);
+    const messages = ids.length
+      ? await db.query.complaintMessages.findMany({
+          orderBy: [desc(schema.complaintMessages.createdAt)],
+        })
+      : [];
+    return rows.map((c) => ({
+      ...c,
+      messages: messages.filter((m) => m.complaintId === c.id),
+    }));
+  }),
+
+  // ── submitComplaint (Distributor) ───────────────────────────────────────
+  submitComplaint: distributorProcedure
+    .input(
+      z.object({
+        orderNumber: z.string().min(1),
+        product: z.string().min(1),
+        type: complaintTypeEnum,
+        description: z.string().min(1),
+        images: z.number().int().default(0),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const now = Date.now();
+      const year = new Date().getFullYear();
+      const existingCount = (await db.query.complaints.findMany()).length;
+      const ticketNumber = `TKT-${year}-${String(existingCount + 1).padStart(4, "0")}`;
+      const [result] = await db.insert(schema.complaints).values({
+        ticketNumber,
+        distributorId: ctx.distributor.id,
+        distributorName: ctx.distributor.name,
+        companyName: ctx.distributor.company ?? null,
+        orderNumber: input.orderNumber,
+        product: input.product,
+        type: input.type,
+        description: input.description,
+        images: input.images,
+        createdAt: now,
+        updatedAt: now,
+      });
+      
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const id = (result as any).insertId; // insertId من نتيجة الإدراج — نفس نمط create الموجود
+      
+      await db.insert(schema.complaintMessages).values({
+        complaintId: id,
+        from: "distributor",
+        text: input.description,
+        date: new Date(now).toISOString().split("T")[0],
+        createdAt: now,
+      });
+      return { id, ticketNumber, success: true };
+    }),
+
+  // ── addReply (Distributor) ──────────────────────────────────────────────
+  addReply: distributorProcedure
+    .input(z.object({ complaintId: z.number(), text: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const complaint = await db.query.complaints.findFirst({
+        where: and(
+          eq(schema.complaints.id, input.complaintId),
+          eq(schema.complaints.distributorId, ctx.distributor.id)
+        ),
+      });
+      if (!complaint) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "الشكوى غير موجودة" });
+      }
+      const now = Date.now();
+      await db.insert(schema.complaintMessages).values({
+        complaintId: input.complaintId,
+        from: "distributor",
+        text: input.text.trim(),
+        date: new Date(now).toISOString().split("T")[0],
+        createdAt: now,
+      });
+      await db
+        .update(schema.complaints)
+        .set({ updatedAt: now })
+        .where(eq(schema.complaints.id, input.complaintId));
       return { success: true };
     }),
 
