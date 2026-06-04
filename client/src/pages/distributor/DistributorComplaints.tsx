@@ -802,14 +802,19 @@ function ComplaintDetailModal({
   onClose,
   onRate,
   onEdit,
+  onReply,
+  isReplying,
 }: {
   complaint: ComplaintItem;
   onClose: () => void;
   onRate: (id: string, rating: SatisfactionRatingData) => void;
   onEdit: (complaint: ComplaintItem) => void;
+  onReply: (text: string) => void;
+  isReplying: boolean;
 }) {
   const { dir } = useLanguage();
   const isRtl = dir === "rtl";
+  const [replyText, setReplyText] = useState("");
   const status = STATUS_CONFIG[complaint.status];
   const type = COMPLAINT_TYPES.find((t) => t.id === complaint.type);
   const isResolved = complaint.status === "resolved";
@@ -945,6 +950,35 @@ function ComplaintDetailModal({
                 ))}
               </div>
             </div>
+
+            {/* Reply UI */}
+            {(complaint.status === "open" || complaint.status === "under_review") && (
+              <div className="mt-4 pt-4 border-t" style={{ borderColor: "oklch(0.92 0.004 286.32)" }}>
+                <Textarea
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  placeholder={isRtl ? "اكتب ردك هنا..." : "Write your reply here..."}
+                  rows={3}
+                  className="text-sm resize-none"
+                />
+                <div className="flex justify-end mt-2">
+                  <button
+                    onClick={() => {
+                      const t = replyText.trim();
+                      if (!t) return;
+                      onReply(t);
+                      setReplyText("");
+                    }}
+                    disabled={isReplying || !replyText.trim()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: "oklch(0.38 0.06 160)", color: "white" }}
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    {isReplying ? (isRtl ? "جارٍ الإرسال..." : "Sending...") : (isRtl ? "إرسال الرد" : "Send Reply")}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </motion.div>
       </motion.div>
@@ -983,6 +1017,16 @@ export default function DistributorComplaints() {
     },
   });
 
+  const replyMutation = trpc.complaints.addReply.useMutation({
+    onSuccess: () => {
+      utils.complaints.myComplaints.invalidate();
+      toast.success(isRtl ? "تم إرسال الرد" : "Reply sent");
+    },
+    onError: (err) => {
+      toast.error(err.message || (isRtl ? "فشل إرسال الرد" : "Failed to send reply"));
+    },
+  });
+
   const [showNewWizard, setShowNewWizard] = useState(false);
   const [selectedComplaint, setSelectedComplaint] = useState<ComplaintItem | null>(null);
   const [editingComplaint, setEditingComplaint] = useState<ComplaintItem | null>(null);
@@ -1001,6 +1045,11 @@ export default function DistributorComplaints() {
     open: complaints.filter((c) => c.status === "open" || c.status === "under_review").length,
     resolved: complaints.filter((c) => c.status === "resolved").length,
     awaiting: complaints.filter((c) => c.status === "return_pending").length,
+  };
+
+  const handleReply = (text: string) => {
+    if (!selectedComplaint) return;
+    replyMutation.mutate({ complaintId: Number(selectedComplaint.id), text });
   };
 
   const handleNewComplaint = (data: Partial<ComplaintItem>) => {
@@ -1254,6 +1303,8 @@ export default function DistributorComplaints() {
           onClose={() => setSelectedComplaint(null)}
           onRate={handleRate}
           onEdit={handleEdit}
+          onReply={handleReply}
+          isReplying={replyMutation.isPending}
         />
       )}
       {editingComplaint && (
