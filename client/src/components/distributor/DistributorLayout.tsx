@@ -22,6 +22,7 @@ import {
   HelpCircle,
   CreditCard,
   AlertCircle,
+  DollarSign,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -42,6 +43,7 @@ export default function DistributorLayout({ children, title, subtitle }: Distrib
   const navItems = [
     { path: "/distributor/dashboard", icon: LayoutDashboard, label: dir === "rtl" ? "لوحة التحكم" : "Dashboard" },
     { path: "/distributor/orders", icon: ShoppingBag, label: dir === "rtl" ? "الطلبات" : "Orders" },
+    { path: "/distributor/payments", icon: DollarSign, label: dir === "rtl" ? "المدفوعات" : "Payments" },
     { path: "/distributor/reports", icon: BarChart3, label: dir === "rtl" ? "التقارير" : "Reports" },
     { path: "/distributor/catalogue", icon: Package, label: dir === "rtl" ? "كتالوج المنتجات" : "Product Catalogue" },
     { path: "/distributor/account", icon: User, label: dir === "rtl" ? "حسابي" : "My Account" },

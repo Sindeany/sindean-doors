@@ -25,6 +25,7 @@ import CheckoutPage from "./pages/Checkout";
 import DistributorLogin from "./pages/distributor/DistributorLogin";
 import DistributorDashboard from "./pages/distributor/DistributorDashboard";
 import DistributorOrders from "./pages/distributor/DistributorOrders";
+import DistributorPayments from "./pages/distributor/DistributorPayments";
 import DistributorReports from "./pages/distributor/DistributorReports";
 import DistributorProducts from "./pages/distributor/DistributorProducts";
 import DistributorAccount from "./pages/distributor/DistributorAccount";
@@ -118,6 +119,7 @@ function Router() {
           component={DistributorDashboard}
         />
         <Route path={"/distributor/orders"} component={DistributorOrders} />
+        <Route path={"/distributor/payments"} component={DistributorPayments} />
         <Route path={"/distributor/reports"} component={DistributorReports} />
         <Route path={"/distributor/products"} component={DistributorProducts} />
         <Route path={"/distributor/account"} component={DistributorAccount} />
