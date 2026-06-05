@@ -68,24 +68,6 @@ function mapOrderFromDB(o: any): Order { // o is raw order from trpc
     trackingNumber: undefined,
   };
 }
-
-const mockPayments: Payment[] = [
-  { id: "PAY-001", date: "2024-04-12", amount: 48000, method: "تحويل بنكي", reference: "TRF-2024-001", status: "paid",    orderId: "ORD-2024-001" },
-  { id: "PAY-002", date: "2024-05-25", amount: 32000, method: "تحويل بنكي", reference: "TRF-2024-002", status: "paid",    orderId: "ORD-2024-002" },
-  { id: "PAY-003", date: "2024-07-18", amount: 78000, method: "شيك",        reference: "CHK-2024-003", status: "paid",    orderId: "ORD-2024-003" },
-  { id: "PAY-004", date: "2024-09-05", amount: 24000, method: "تحويل بنكي", reference: "TRF-2024-004", status: "paid",    orderId: "ORD-2024-004" },
-  { id: "PAY-005", date: "2024-10-20", amount: 58500, method: "تحويل بنكي", reference: "TRF-2024-005", status: "paid",    orderId: "ORD-2024-005" },
-  { id: "PAY-006", date: "2024-12-08", amount: 41000, method: "شيك",        reference: "CHK-2024-006", status: "paid",    orderId: "ORD-2024-006" },
-  { id: "PAY-007", date: "2025-02-17", amount: 72000, method: "تحويل بنكي", reference: "TRF-2025-001", status: "paid",    orderId: "ORD-2025-001" },
-  { id: "PAY-008", date: "2025-04-22", amount: 36000, method: "تحويل بنكي", reference: "TRF-2025-002", status: "paid",    orderId: "ORD-2025-002" },
-  { id: "PAY-009", date: "2025-06-10", amount: 55000, method: "شيك",        reference: "CHK-2025-003", status: "paid",    orderId: "ORD-2025-003" },
-  { id: "PAY-010", date: "2025-08-28", amount: 44000, method: "تحويل بنكي", reference: "TRF-2025-004", status: "paid",    orderId: "ORD-2025-004" },
-  { id: "PAY-011", date: "2025-10-15", amount: 63000, method: "تحويل بنكي", reference: "TRF-2025-005", status: "paid",    orderId: "ORD-2025-005" },
-  { id: "PAY-012", date: "2025-12-05", amount: 40000, method: "تحويل بنكي", reference: "TRF-2025-006", status: "paid",    orderId: "ORD-2025-006", note: "دفعة أولى 50%" },
-  { id: "PAY-013", date: "2026-02-20", amount: 0,     method: "—",          reference: "—",            status: "pending", orderId: "ORD-2026-001", note: "بانتظار الدفع" },
-  { id: "PAY-014", date: "2026-04-07", amount: 0,     method: "—",          reference: "—",            status: "pending", orderId: "ORD-2026-002", note: "بانتظار الموافقة" },
-];
-
 // ─── Config ───────────────────────────────────────────────────
 const ORDER_STATUS: Record<OrderStatus, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
   pending:    { label: "بانتظار الموافقة", color: "#F59E0B", bg: "#FFFBEB", icon: <Clock className="w-3.5 h-3.5" /> },
@@ -184,6 +166,7 @@ export default function AdminDistributorProfile() {
     );
 
   const { data: rawComplaints } = trpc.complaints.list.useQuery({ distributorId: distId }, { enabled: Number.isFinite(distId) });
+  const { data: rawPayments } = trpc.payments.list.useQuery({ distributorId: distId }, { enabled: Number.isFinite(distId) });
 
   if (distLoading) {
     return (
@@ -258,7 +241,41 @@ export default function AdminDistributorProfile() {
   const openComplaints = dist.openComplaints;
 
   const filteredOrders = orders.filter(o => orderFilter === "all" || o.status === orderFilter);
-  const filteredPayments = mockPayments.filter(p => paymentFilter === "all" || p.status === paymentFilter);
+
+  // خريطة طرق الدفع: enum مقنّن → نص عربي للعرض
+  const PAYMENT_METHOD_AR: Record<string, string> = {
+    cash: "نقداً",
+    bank_transfer: "تحويل بنكي",
+    cheque: "شيك",
+    card: "بطاقة",
+    other: "أخرى",
+  };
+
+  // خريطة حالة الدفعة: enum الجدول → حالة الواجهة
+  const mapPaymentStatus = (s: string): PaymentStatus => {
+    if (s === "confirmed") return "paid";
+    if (s === "cancelled") return "overdue";
+    return "pending";
+  };
+
+  // mapper: صف الخادم → شكل Payment الذي تتوقّعه الواجهة
+  const mapPaymentFromDB = (p: any): Payment => ({
+    // any: raw server row
+    id: `PAY-${String(p.id).padStart(3, "0")}`,
+    date: p.paymentDate ? new Date(p.paymentDate).toISOString().slice(0, 10) : "—",
+    amount: p.amount ?? 0,
+    method: PAYMENT_METHOD_AR[p.method] ?? p.method ?? "—",
+    reference: p.reference ?? "—",
+    status: mapPaymentStatus(p.status),
+    orderId: p.orderNumber ?? undefined,
+    note: p.note ?? undefined,
+  });
+
+  const payments: Payment[] = (rawPayments ?? []).map(mapPaymentFromDB);
+
+  const filteredPayments = payments.filter(p => paymentFilter === "all" || p.status === paymentFilter);
+  const totalPaid = payments.filter(p => p.status === "paid" || p.status === "partial").reduce((s, p) => s + p.amount, 0);
+  const totalPending = payments.filter(p => p.status === "pending" || p.status === "overdue").reduce((s, p) => s + p.amount, 0);
 
   const contractExpiring = dist.contractEnd && new Date(dist.contractEnd) < new Date(Date.now() + 30 * 24 * 3600000);
 
@@ -294,7 +311,7 @@ export default function AdminDistributorProfile() {
     { id: "overview",   label: "نظرة عامة",    icon: <BarChart2 className="w-4 h-4" /> },
     { id: "orders",     label: "الطلبات",       icon: <ShoppingBag className="w-4 h-4" />, count: orders.length },
     { id: "complaints", label: "الشكاوى",       icon: <AlertCircle className="w-4 h-4" />, count: complaints.length },
-    { id: "payments",   label: "سجل المدفوعات", icon: <DollarSign className="w-4 h-4" />,  count: mockPayments.length },
+    { id: "payments",   label: "سجل المدفوعات", icon: <DollarSign className="w-4 h-4" />,  count: payments.length },
   ] as const;
 
   return (
@@ -480,7 +497,7 @@ export default function AdminDistributorProfile() {
                         {[
                           { label: "إجمالي المدفوع",    value: `${(totalRevenue/1000).toFixed(0)}K ر.س`,    color: "#10B981", bg: "#ECFDF5" },
                           { label: "المبالغ المعلقة",   value: `${(pendingAmount/1000).toFixed(0)}K ر.س`,   color: "#F59E0B", bg: "#FFFBEB" },
-                          { label: "عدد الدفعات",       value: mockPayments.filter(p => p.status === "paid").length, color: "#3B82F6", bg: "#EFF6FF" },
+                          { label: "عدد الدفعات",       value: payments.filter(p => p.status === "paid").length, color: "#3B82F6", bg: "#EFF6FF" },
                           { label: "متوسط قيمة الطلب",  value: `${Math.round(totalRevenue / (orders.filter(o => o.status === "delivered").length || 1) / 1000)}K ر.س`, color: "#8B5CF6", bg: "#F5F3FF" },
                         ].map((s) => (
                           <div key={s.label} className="p-3 rounded-xl border border-gray-100" style={{ background: s.bg }}>
@@ -697,7 +714,7 @@ export default function AdminDistributorProfile() {
                     {[
                       { label: "إجمالي المدفوع", value: `${(totalRevenue/1000).toFixed(0)}K ر.س`, color: "#10B981", bg: "#ECFDF5" },
                       { label: "المبالغ المعلقة", value: `${(pendingAmount/1000).toFixed(0)}K ر.س`, color: "#F59E0B", bg: "#FFFBEB" },
-                      { label: "عدد الدفعات",    value: mockPayments.filter(p => p.status === "paid").length, color: "#3B82F6", bg: "#EFF6FF" },
+                      { label: "عدد الدفعات",    value: payments.filter(p => p.status === "paid").length, color: "#3B82F6", bg: "#EFF6FF" },
                     ].map((s) => (
                       <div key={s.label} className="p-3 rounded-xl border border-gray-100" style={{ background: s.bg }}>
                         <div className="text-xs text-gray-500 mb-1">{s.label}</div>
