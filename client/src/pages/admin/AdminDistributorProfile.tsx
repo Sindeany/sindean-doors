@@ -725,7 +725,7 @@ export default function AdminDistributorProfile() {
                   {/* Summary Bar */}
                   <div className="grid grid-cols-3 gap-3 mb-4">
                     {[
-                      { label: "إجمالي المدفوع", value: `${(totalRevenue/1000).toFixed(0)}K ر.س`, color: "#10B981", bg: "#ECFDF5" },
+                      { label: "إجمالي المدفوع", value: `${(totalPaid/1000).toFixed(0)}K ر.س`, color: "#10B981", bg: "#ECFDF5" },
                       { label: "المبالغ المعلقة", value: `${(pendingAmount/1000).toFixed(0)}K ر.س`, color: "#F59E0B", bg: "#FFFBEB" },
                       { label: "عدد الدفعات",    value: payments.filter(p => p.status === "paid").length, color: "#3B82F6", bg: "#EFF6FF" },
                     ].map((s) => (
