@@ -114,3 +114,7 @@ client/public/__manus__/version.json
 # User-uploaded runtime files (product/complaint images, etc.)
 uploads/*
 !uploads/.gitkeep
+
+# Manus agent runtime folders (logs & checkpoints — not part of source)
+.manus/
+.manus-logs/
