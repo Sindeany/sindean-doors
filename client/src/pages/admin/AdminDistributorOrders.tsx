@@ -12,7 +12,7 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────
 type OrderStatus = "pending" | "approved" | "production" | "ready" | "shipped" | "delivered" | "cancelled";
-type ComplaintStatus = "open" | "in_review" | "resolved" | "rejected";
+type ComplaintStatus = "open" | "under_review" | "resolved" | "rejected";
 type PaymentStatus = "paid" | "pending" | "overdue" | "partial";
 
 interface Order {

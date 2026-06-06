@@ -21,7 +21,7 @@ import { trpc } from "@/lib/trpc";
 
 // ─── Types ────────────────────────────────────────────────────
 type OrderStatus = "pending" | "approved" | "production" | "ready" | "shipped" | "delivered" | "cancelled";
-type ComplaintStatus = "open" | "in_review" | "resolved" | "rejected";
+type ComplaintStatus = "open" | "under_review" | "resolved" | "rejected";
 type PaymentStatus = "paid" | "pending" | "overdue" | "partial";
 
 interface Order {
@@ -111,7 +111,7 @@ const ORDER_STATUS: Record<OrderStatus, { label: string; color: string; bg: stri
 
 const COMPLAINT_STATUS: Record<ComplaintStatus, { label: string; color: string; bg: string }> = {
   open:      { label: "مفتوحة",        color: "#EF4444", bg: "#FEF2F2" },
-  in_review: { label: "قيد المراجعة",  color: "#F59E0B", bg: "#FFFBEB" },
+  under_review: { label: "قيد المراجعة",  color: "#F59E0B", bg: "#FFFBEB" },
   resolved:  { label: "تم الحل",       color: "#10B981", bg: "#ECFDF5" },
   rejected:  { label: "مرفوضة",        color: "#6B7280", bg: "#F3F4F6" },
 };
@@ -260,9 +260,9 @@ export default function AdminDistributorProfile() {
     size: "مقاس", color: "لون", damage: "كسر", shortage: "نقص", delay: "تأخير", quality: "جودة", other: "أخرى",
   };
   const mapStatus = (s: string): ComplaintStatus =>
-    s === "under_review" || s === "return_pending" ? "in_review"
+    s === "under_review" || s === "return_pending" ? "under_review"
     : s === "open" || s === "resolved" || s === "rejected" ? s
-    : "in_review";
+    : "under_review";
   const complaints: Complaint[] = (rawComplaints ?? []).map((c: any) => ({ // any: raw server row
     id: c.ticketNumber,
     date: c.createdAt ? new Date(Number(c.createdAt)).toISOString().slice(0, 10) : "",
