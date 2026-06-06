@@ -68,6 +68,36 @@ function mapOrderFromDB(o: any, paidByOrder?: Record<string, number>): Order { /
     trackingNumber: undefined,
   };
 }
+// طرق الدفع: enum محدد في الخادم
+const PAYMENT_METHOD_AR: Record<string, string> = {
+  cash: "نقداً",
+  bank_transfer: "تحويل بنكي",
+  cheque: "شيك",
+  card: "بطاقة",
+  other: "أخرى",
+};
+
+// حالة دفع الخادم: enum مدفوع، في انتظار، إلغاء
+function mapPaymentStatus(s: string): PaymentStatus {
+  if (s === "confirmed") return "paid";
+  if (s === "cancelled") return "overdue";
+  return "pending";
+}
+
+// mapper: صف الخادم → شكل Payment للواجهة
+function mapPaymentFromDB(p: any): Payment { // p is raw server row
+  return {
+    id: `PAY-${String(p.id).padStart(3, "0")}`,
+    date: p.paymentDate ? new Date(p.paymentDate).toISOString().slice(0, 10) : "—",
+    amount: p.amount ?? 0,
+    method: PAYMENT_METHOD_AR[p.method] ?? p.method ?? "—",
+    reference: p.reference ?? "—",
+    status: mapPaymentStatus(p.status),
+    orderId: p.orderNumber ?? undefined,
+    note: p.note ?? undefined,
+  };
+}
+
 // ─── Config ───────────────────────────────────────────────────
 const ORDER_STATUS: Record<OrderStatus, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
   pending:    { label: "بانتظار الموافقة", color: "#F59E0B", bg: "#FFFBEB", icon: <Clock className="w-3.5 h-3.5" /> },
@@ -252,34 +282,7 @@ export default function AdminDistributorProfile() {
 
   const filteredOrders = orders.filter(o => orderFilter === "all" || o.status === orderFilter);
 
-  // خريطة طرق الدفع: enum مقنّن → نص عربي للعرض
-  const PAYMENT_METHOD_AR: Record<string, string> = {
-    cash: "نقداً",
-    bank_transfer: "تحويل بنكي",
-    cheque: "شيك",
-    card: "بطاقة",
-    other: "أخرى",
-  };
 
-  // خريطة حالة الدفعة: enum الجدول → حالة الواجهة
-  const mapPaymentStatus = (s: string): PaymentStatus => {
-    if (s === "confirmed") return "paid";
-    if (s === "cancelled") return "overdue";
-    return "pending";
-  };
-
-  // mapper: صف الخادم → شكل Payment الذي تتوقّعه الواجهة
-  const mapPaymentFromDB = (p: any): Payment => ({
-    // any: raw server row
-    id: `PAY-${String(p.id).padStart(3, "0")}`,
-    date: p.paymentDate ? new Date(p.paymentDate).toISOString().slice(0, 10) : "—",
-    amount: p.amount ?? 0,
-    method: PAYMENT_METHOD_AR[p.method] ?? p.method ?? "—",
-    reference: p.reference ?? "—",
-    status: mapPaymentStatus(p.status),
-    orderId: p.orderNumber ?? undefined,
-    note: p.note ?? undefined,
-  });
 
   const payments: Payment[] = (rawPayments ?? []).map(mapPaymentFromDB);
 
