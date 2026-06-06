@@ -52,7 +52,7 @@ function mapStatus(s: string): OrderStatus {
   return s as OrderStatus;
 }
 
-function mapOrderFromDB(o: any): Order { // o is raw order from trpc
+function mapOrderFromDB(o: any, paidByOrder?: Record<string, number>): Order { // o is raw order from trpc
   const items = o.items ?? [];
   return {
     id: o.orderNumber,
@@ -64,7 +64,7 @@ function mapOrderFromDB(o: any): Order { // o is raw order from trpc
     products: items.map((it: any) => `${it.doorType} × ${it.quantity}`).join("، "),
     total: o.totalAmount,
     paymentStatus: o.paymentStatus as PaymentStatus,
-    paid: o.paymentStatus === "paid" ? o.totalAmount : 0,
+    paid: paidByOrder?.[o.orderNumber] ?? (o.paymentStatus === "paid" ? o.totalAmount : 0),
     trackingNumber: undefined,
   };
 }
@@ -215,7 +215,16 @@ export default function AdminDistributorProfile() {
     );
   }
 
-  const orders: Order[] = (rawOrders ?? []).map(mapOrderFromDB);
+  // خريطة المدفوع الفعلي لكل طلب = مجموع الدفعات المؤكّدة المرتبطة بـ orderNumber
+  // مصدر الحقيقة: distributor_payments (دفعات confirmed فقط، مطابقةً لاشتقاق paymentStatus في الخادم)
+  const paidByOrder: Record<string, number> = {};
+  for (const p of rawPayments ?? []) {
+    if (p.status === "confirmed" && p.orderNumber) {
+      paidByOrder[p.orderNumber] = (paidByOrder[p.orderNumber] ?? 0) + (p.amount ?? 0);
+    }
+  }
+
+  const orders: Order[] = (rawOrders ?? []).map((o: any) => mapOrderFromDB(o, paidByOrder));
 
   const COMPLAINT_TYPE_AR: Record<string, string> = {
     size: "مقاس", color: "لون", damage: "كسر", shortage: "نقص", delay: "تأخير", quality: "جودة", other: "أخرى",
