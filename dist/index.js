@@ -9252,6 +9252,7 @@ var __filename = fileURLToPath(import.meta.url);
 var __dirname = path.dirname(__filename);
 async function startServer() {
   const app = express();
+  console.log("ADMIN_HASH_DEBUG >>> len:", (process.env.ADMIN_PASSWORD_HASH || "MISSING").length, "value:", JSON.stringify(process.env.ADMIN_PASSWORD_HASH || "MISSING"));
   const server = createServer(app);
   const allowedOrigin = process.env.ALLOWED_ORIGIN;
   app.use(
