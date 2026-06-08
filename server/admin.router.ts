@@ -37,7 +37,7 @@ export const adminAuthRouter = router({
   login: publicProcedure
     .input(z.object({ password: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
-      const passwordHash = process.env.ADMIN_PASSWORD_HASH;
+      const passwordHash = (process.env.ADMIN_PASSWORD_HASH || "").replace(/\\\$/g, "$");
       const internalKey = process.env.ADMIN_INTERNAL_KEY;
 
       let valid = false;

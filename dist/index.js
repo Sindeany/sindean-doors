@@ -3803,7 +3803,7 @@ var adminAuthRouter = router({
   // تسجيل دخول المدير
   // Supports ADMIN_PASSWORD_HASH (bcrypt) or ADMIN_INTERNAL_KEY (plaintext fallback)
   login: publicProcedure.input(z8.object({ password: z8.string().min(1) })).mutation(async ({ input, ctx }) => {
-    const passwordHash = process.env.ADMIN_PASSWORD_HASH;
+    const passwordHash = (process.env.ADMIN_PASSWORD_HASH || "").replace(/\\\$/g, "$");
     const internalKey = process.env.ADMIN_INTERNAL_KEY;
     let valid = false;
     if (passwordHash) {
