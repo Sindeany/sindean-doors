@@ -7,6 +7,7 @@ const useSsl = process.env.DB_SSL === "true";
 
 const pool = mysql.createPool({
   uri: process.env.DATABASE_URL!,
+  charset: "utf8mb4",
   ...(useSsl ? { ssl: { rejectUnauthorized: true } } : {}),
 });
 

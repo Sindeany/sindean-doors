@@ -1037,6 +1037,7 @@ var productionLines = mysqlTable("production_lines", {
 var useSsl = process.env.DB_SSL === "true";
 var pool = mysql.createPool({
   uri: process.env.DATABASE_URL,
+  charset: "utf8mb4",
   ...useSsl ? { ssl: { rejectUnauthorized: true } } : {}
 });
 var db = drizzle(pool, { schema: schema_exports, mode: "default" });
@@ -8975,7 +8976,11 @@ var ordersRouter = router({
       where: eq26(schema_exports.doorOrders.id, input.id)
     });
     if (!order) throw new TRPCError13({ code: "NOT_FOUND" });
-    return order;
+    return {
+      ...order,
+      sizes: typeof order.sizes === "string" ? JSON.parse(order.sizes || "{}") : order.sizes,
+      options: typeof order.options === "string" ? JSON.parse(order.options || "{}") : order.options
+    };
   }),
   // Update order status (admin only)
   updateStatus: adminProcedure.input(

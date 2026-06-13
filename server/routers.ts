@@ -245,7 +245,15 @@ const ordersRouter = router({
         where: eq(schema.doorOrders.id, input.id),
       });
       if (!order) throw new TRPCError({ code: "NOT_FOUND" });
-      return order;
+      return {
+        ...order,
+        sizes: typeof order.sizes === "string"
+          ? JSON.parse(order.sizes || "{}")
+          : order.sizes,
+        options: typeof order.options === "string"
+          ? JSON.parse(order.options || "{}")
+          : order.options,
+      };
     }),
 
   // Update order status (admin only)
