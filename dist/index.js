@@ -8897,7 +8897,11 @@ var ordersRouter = router({
       orderBy: [desc22(schema_exports.doorOrders.createdAt)],
       where: input?.status ? eq26(schema_exports.doorOrders.status, input.status) : void 0
     });
-    return orders;
+    return orders.map((order) => ({
+      ...order,
+      sizes: typeof order.sizes === "string" ? JSON.parse(order.sizes || "{}") : order.sizes,
+      options: typeof order.options === "string" ? JSON.parse(order.options || "{}") : order.options
+    }));
   }),
   // Dashboard statistics (admin only)
   stats: adminProcedure.query(async () => {

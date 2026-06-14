@@ -152,7 +152,15 @@ const ordersRouter = router({
           ? eq(schema.doorOrders.status, input.status)
           : undefined,
       });
-      return orders;
+      return orders.map((order) => ({
+        ...order,
+        sizes: typeof order.sizes === "string"
+          ? JSON.parse(order.sizes || "{}")
+          : order.sizes,
+        options: typeof order.options === "string"
+          ? JSON.parse(order.options || "{}")
+          : order.options,
+      }));
     }),
 
   // Dashboard statistics (admin only)
