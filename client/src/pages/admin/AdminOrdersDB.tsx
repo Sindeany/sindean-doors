@@ -71,8 +71,12 @@ function CreateInvoiceFromOrderModal({
   const vatAmount = parseFloat((priceWithVat - subtotalBeforeVat).toFixed(2));
 
   // بناء وصف البند من بيانات الطلب
-  const dims = order.dimensions as Record<string, number> | null;
-  const sels = order.selections as Record<string, string> | null;
+  const dims = (typeof order.dimensions === "string"
+    ? JSON.parse(order.dimensions || "{}")
+    : order.dimensions) as Record<string, number> | null;
+  const sels = (typeof order.selections === "string"
+    ? JSON.parse(order.selections || "{}")
+    : order.selections) as Record<string, string> | null;
   const dimsText = dims && Object.keys(dims).length > 0
     ? " - " + Object.entries(dims).map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}سم`).join(", ")
     : "";
@@ -258,8 +262,12 @@ function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => voi
     }
   };
 
-  const dims = order.dimensions as Record<string, number> | null;
-  const sels = order.selections as Record<string, string> | null;
+  const dims = (typeof order.dimensions === "string"
+    ? JSON.parse(order.dimensions || "{}")
+    : order.dimensions) as Record<string, number> | null;
+  const sels = (typeof order.selections === "string"
+    ? JSON.parse(order.selections || "{}")
+    : order.selections) as Record<string, string> | null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" dir="rtl">
