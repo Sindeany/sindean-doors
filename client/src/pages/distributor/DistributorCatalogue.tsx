@@ -6,13 +6,15 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, Filter, X, ChevronDown, Eye, ShoppingCart,
-  Star, Ruler, Palette, Tag, Info, Check, Package,
+  Star, Ruler, Palette, Tag, Info, Check, Package, Loader2, AlertCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLanguage } from "@/contexts/LanguageContext";
 import NewOrderWizard from "@/components/distributor/NewOrderWizard";
 import DistributorLayout from "@/components/distributor/DistributorLayout";
+import { trpc } from "@/lib/trpc";
+import { useDistributorAuth } from "@/contexts/DistributorAuthContext";
 
 // ─── Data ───────────────────────────────────────────────────
 const CATEGORIES = [
@@ -35,90 +37,94 @@ const COLOR_SWATCHES = [
   { id: "espresso", label: "إسبريسو", labelEn: "Espresso", hex: "#2C1A0E" },
 ];
 
-const CATALOGUE_ITEMS = [
-  {
-    id: "cat-1", category: "interior",
-    name: "باب داخلي كلاسيكي", nameEn: "Classic Interior Door",
-    wood: "بلوط طبيعي", woodEn: "Natural Oak",
-    image: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=500&q=80",
-    sizes: ["80×200", "90×210", "100×210"],
-    price: 850, discountedPrice: 765,
-    colors: ["natural", "light_oak", "white", "grey"],
-    rating: 4.8, reviews: 124,
-    isNew: false, isBestSeller: true,
-    desc: "باب داخلي بتصميم كلاسيكي من خشب البلوط الطبيعي، مثالي للغرف والمكاتب.",
-    descEn: "Classic interior door in natural oak, ideal for rooms and offices.",
-  },
-  {
-    id: "cat-2", category: "interior",
-    name: "باب داخلي معاصر", nameEn: "Contemporary Interior Door",
-    wood: "MDF بقشرة خشبية", woodEn: "MDF with Wood Veneer",
-    image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=500&q=80",
-    sizes: ["80×200", "90×210", "100×210", "120×240"],
-    price: 650, discountedPrice: null,
-    colors: ["white", "charcoal", "grey", "espresso"],
-    rating: 4.6, reviews: 89,
-    isNew: true, isBestSeller: false,
-    desc: "تصميم عصري بخطوط نظيفة، متوفر بألوان متعددة.",
-    descEn: "Modern design with clean lines, available in multiple colors.",
-  },
-  {
-    id: "cat-3", category: "exterior",
-    name: "باب خارجي فاخر", nameEn: "Luxury Exterior Door",
-    wood: "ساج طبيعي", woodEn: "Natural Teak",
-    image: "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=500&q=80",
-    sizes: ["90×210", "100×210", "120×240"],
-    price: 2150, discountedPrice: 1935,
-    colors: ["natural", "dark_walnut", "mahogany"],
-    rating: 4.9, reviews: 67,
-    isNew: false, isBestSeller: true,
-    desc: "باب خارجي من خشب الساج المقاوم للرطوبة والحشرات.",
-    descEn: "Exterior door in moisture and insect-resistant teak wood.",
-  },
-  {
-    id: "cat-4", category: "fire",
-    name: "باب مقاوم للحريق FD30", nameEn: "Fire Door FD30",
-    wood: "جوز أمريكي", woodEn: "American Walnut",
-    image: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=500&q=80",
-    sizes: ["90×210", "100×210"],
-    price: 1350, discountedPrice: null,
-    colors: ["natural", "dark_walnut", "charcoal"],
-    rating: 4.7, reviews: 43,
-    isNew: false, isBestSeller: false,
-    desc: "باب مقاوم للحريق لمدة 30 دقيقة، مطابق للمواصفات السعودية.",
-    descEn: "30-minute fire-resistant door, compliant with Saudi standards.",
-  },
-  {
-    id: "cat-5", category: "main",
-    name: "باب رئيسي ملكي", nameEn: "Royal Main Entrance Door",
-    wood: "جوز أمريكي", woodEn: "American Walnut",
-    image: "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=500&q=80",
-    sizes: ["120×240", "140×260"],
-    price: 3200, discountedPrice: 2880,
-    colors: ["dark_walnut", "mahogany", "espresso"],
-    rating: 5.0, reviews: 31,
-    isNew: true, isBestSeller: true,
-    desc: "باب رئيسي فاخر بنقوش يدوية، يليق بالفلل والقصور.",
-    descEn: "Luxury main door with hand carvings, perfect for villas and palaces.",
-  },
-  {
-    id: "cat-6", category: "sliding",
-    name: "باب منزلق زجاجي", nameEn: "Glass Sliding Door",
-    wood: "ألومنيوم وزجاج", woodEn: "Aluminum & Glass",
-    image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=500&q=80",
-    sizes: ["120×240", "160×240", "200×240"],
-    price: 1800, discountedPrice: 1620,
-    colors: ["charcoal", "grey", "white"],
-    rating: 4.5, reviews: 58,
-    isNew: false, isBestSeller: false,
-    desc: "باب منزلق بإطار ألومنيوم وزجاج مقسّى، مثالي للمساحات المفتوحة.",
-    descEn: "Sliding door with aluminum frame and tempered glass, ideal for open spaces.",
-  },
-];
+const WOOD_LABELS: Record<string, { ar: string; en: string }> = {
+  oak: { ar: "خشب سنديان (بلوط)", en: "Oak Wood" },
+  walnut: { ar: "جوز أمريكي", en: "American Walnut" },
+  teak: { ar: "ساج طبيعي", en: "Natural Teak" },
+  mahogany: { ar: "ماهوجني", en: "Mahogany" },
+  pine: { ar: "صنوبر", en: "Pine" },
+  wpc: { ar: "خشب بلاستيكي WPC", en: "WPC Wood" },
+  mdf: { ar: "MDF بقشرة خشبية", en: "MDF with Wood Veneer" }
+};
+
+function mapColorToSwatch(colorName: string): string {
+  const name = colorName.toLowerCase().trim();
+  if (name.includes("جوز") || name.includes("walnut")) return "dark_walnut";
+  if (name.includes("بلوط فاتح") || name.includes("light oak")) return "light_oak";
+  if (name.includes("بلوط") || name.includes("طبيعي") || name.includes("oak") || name.includes("natural")) return "natural";
+  if (name.includes("أبيض") || name.includes("white")) return "white";
+  if (name.includes("فحم") || name.includes("charcoal")) return "charcoal";
+  if (name.includes("ماهوجني") || name.includes("mahogany")) return "mahogany";
+  if (name.includes("رمادي") || name.includes("grey") || name.includes("gray")) return "grey";
+  if (name.includes("إسبريسو") || name.includes("espresso")) return "espresso";
+  return "natural";
+}
+
+interface CatalogueItem {
+  id: string;
+  category: string;
+  categoryEn: string;
+  name: string;
+  nameEn: string;
+  wood: string;
+  woodEn: string;
+  woodType: string;
+  woodTypeEn: string;
+  image: string;
+  sizes: string[];
+  price: number;
+  discountedPrice: number | null;
+  colors: string[];
+  rating: number;
+  reviews: number;
+  isNew: boolean;
+  isBestSeller: boolean;
+  desc: string;
+  descEn: string;
+}
+
+function mapDbProductToCatalogueItem(p: any, discountRate: number): CatalogueItem {
+  const woodLabel = WOOD_LABELS[p.woodType] || { ar: p.woodType || "بلوط طبيعي", en: p.woodType || "Natural Oak" };
+  const catObj = CATEGORIES.find(c => c.id === p.category);
+  const categoryEn = catObj?.labelEn || p.category;
+
+  const dbColors = Array.isArray(p.colors) ? p.colors : [];
+  const mappedColors = dbColors.length > 0
+    ? dbColors.map((c: string) => mapColorToSwatch(c))
+    : ["natural"];
+
+  const basePrice = p.basePrice || 1000;
+  const discountedPrice = p.distributorPrice && p.distributorPrice > 0
+    ? p.distributorPrice
+    : Math.round(basePrice * (1 - discountRate));
+
+  return {
+    id: String(p.id),
+    category: p.category || "interior",
+    categoryEn: categoryEn,
+    name: p.name,
+    nameEn: p.nameEn || p.name,
+    wood: woodLabel.ar,
+    woodEn: woodLabel.en,
+    woodType: p.woodType,
+    woodTypeEn: woodLabel.en,
+    image: p.image || "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=500&q=80",
+    sizes: Array.isArray(p.sizes) && p.sizes.length > 0 ? p.sizes : ["80×200", "90×210", "100×210"],
+    price: basePrice,
+    discountedPrice: discountedPrice < basePrice ? discountedPrice : null,
+    colors: mappedColors,
+    rating: p.rating || 4.7,
+    reviews: p.reviewCount || 42,
+    isNew: !!p.isNew,
+    isBestSeller: !!p.isBestseller,
+    desc: p.description || "",
+    descEn: p.description || "",
+  };
+}
 
 // ─── Product Card ────────────────────────────────────────────
-function CatalogueCard({ item, isRtl, onOrder }: { item: typeof CATALOGUE_ITEMS[0]; isRtl: boolean; onOrder: () => void }) {
-  const [selectedColor, setSelectedColor] = useState(item.colors[0]);
+function CatalogueCard({ item, isRtl, onOrder }: { item: CatalogueItem; isRtl: boolean; onOrder: () => void }) {
+  const [selectedColor, setSelectedColor] = useState(item.colors[0] || "natural");
   const [isExpanded, setIsExpanded] = useState(false);
   const colorData = COLOR_SWATCHES.find((c) => c.id === selectedColor);
 
@@ -278,96 +284,158 @@ function CatalogueCard({ item, isRtl, onOrder }: { item: typeof CATALOGUE_ITEMS[
 export default function DistributorCatalogue() {
   const { dir } = useLanguage();
   const isRtl = dir === "rtl";
+  const { distributor } = useDistributorAuth();
 
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
   const [showWizard, setShowWizard] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<typeof CATALOGUE_ITEMS[0] | null>(null);
+  const [selectedItem, setSelectedItem] = useState<CatalogueItem | null>(null);
+
+  // ── جلب المنتجات الحقيقية من قاعدة البيانات ────────────────
+  const { data: dbProducts, isLoading, isError } = trpc.products.list.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const discountRate = distributor ? distributor.discount / 100 : 0;
+
+  const catalogueItems = useMemo(() => {
+    if (!dbProducts) return [];
+    return dbProducts.map((p) => mapDbProductToCatalogueItem(p, discountRate));
+  }, [dbProducts, discountRate]);
 
   const filtered = useMemo(() => {
-    return CATALOGUE_ITEMS.filter((item) => {
+    return catalogueItems.filter((item) => {
       const matchCat = activeCategory === "all" || item.category === activeCategory;
       const q = search.toLowerCase();
-      const matchSearch = !q || item.name.includes(q) || item.nameEn.toLowerCase().includes(q) || item.wood.includes(q);
+      const matchSearch =
+        !q ||
+        item.name.toLowerCase().includes(q) ||
+        item.nameEn.toLowerCase().includes(q) ||
+        item.wood.toLowerCase().includes(q);
       return matchCat && matchSearch;
     });
-  }, [search, activeCategory]);
+  }, [search, activeCategory, catalogueItems]);
+
+  if (isLoading) {
+    return (
+      <DistributorLayout
+        title={isRtl ? "كتالوج المنتجات" : "Product Catalogue"}
+        subtitle={isRtl ? "جاري تحميل المنتجات..." : "Loading products..."}
+      >
+        <div className="flex items-center justify-center min-h-[50vh]">
+          <Loader2 className="w-8 h-8 animate-spin" style={{ color: "oklch(0.38 0.06 160)" }} />
+        </div>
+      </DistributorLayout>
+    );
+  }
+
+  if (isError) {
+    return (
+      <DistributorLayout
+        title={isRtl ? "كتالوج المنتجات" : "Product Catalogue"}
+        subtitle={isRtl ? "تعذر تحميل المنتجات" : "Failed to load catalogue"}
+      >
+        <div className="flex flex-col items-center justify-center min-h-[50vh] text-gray-400 gap-2">
+          <AlertCircle className="w-12 h-12 text-red-500 opacity-80" />
+          <p className="text-sm font-medium">{isRtl ? "حدث خطأ أثناء تحميل المنتجات من الخادم." : "An error occurred while fetching products."}</p>
+        </div>
+      </DistributorLayout>
+    );
+  }
 
   return (
     <DistributorLayout
       title={isRtl ? "كتالوج المنتجات" : "Product Catalogue"}
-      subtitle={isRtl ? `${CATALOGUE_ITEMS.length} منتج متاح · اختر وأنشئ طلبك مباشرة` : `${CATALOGUE_ITEMS.length} products · Select and order directly`}
+      subtitle={isRtl ? `${catalogueItems.length} منتج متاح · اختر وأنشئ طلبك مباشرة` : `${catalogueItems.length} products · Select and order directly`}
     >
-    <div className="max-w-7xl mx-auto" dir={dir}>
+      <div className="max-w-7xl mx-auto" dir={dir}>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        <div className="relative flex-1">
-          <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <Input
-            placeholder={isRtl ? "ابحث عن منتج..." : "Search products..."}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="ps-9 text-sm"
-          />
-          {search && (
-            <button onClick={() => setSearch("")} className="absolute end-3 top-1/2 -translate-y-1/2">
-              <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
-            </button>
-          )}
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 flex-shrink-0">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveCategory(cat.id)}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all flex-shrink-0"
-              style={{
-                background: activeCategory === cat.id ? "oklch(0.38 0.06 160)" : "#f3f4f6",
-                color: activeCategory === cat.id ? "white" : "#6b7280",
-              }}
-            >
-              {isRtl ? cat.label : cat.labelEn}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Grid */}
-      <AnimatePresence mode="popLayout">
-        {filtered.length > 0 ? (
-          <motion.div
-            layout
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
-          >
-            {filtered.map((item) => (
-              <CatalogueCard
-                key={item.id}
-                item={item}
-                isRtl={isRtl}
-                onOrder={() => { setSelectedItem(item); setShowWizard(true); }}
-              />
+        {/* Filters */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              placeholder={isRtl ? "ابحث عن منتج..." : "Search products..."}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="ps-9 text-sm rounded-xl border-gray-200"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="absolute end-3 top-1/2 -translate-y-1/2">
+                <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1 flex-shrink-0">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setActiveCategory(cat.id)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0"
+                style={{
+                  background: activeCategory === cat.id ? "oklch(0.38 0.06 160)" : "#f3f4f6",
+                  color: activeCategory === cat.id ? "white" : "#6b7280",
+                }}
+              >
+                {isRtl ? cat.label : cat.labelEn}
+              </button>
             ))}
-          </motion.div>
-        ) : (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-16 text-gray-400"
-          >
-            <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">{isRtl ? "لا توجد منتجات مطابقة" : "No matching products"}</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        </div>
 
-      {/* Order Wizard */}
-      <NewOrderWizard
-        isOpen={showWizard}
-        onClose={() => { setShowWizard(false); setSelectedItem(null); }}
-        initialOrderType="purchase_order"
-      />
-    </div>
+        {/* Grid */}
+        <AnimatePresence mode="popLayout">
+          {filtered.length > 0 ? (
+            <motion.div
+              layout
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+            >
+              {filtered.map((item) => (
+                <CatalogueCard
+                  key={item.id}
+                  item={item}
+                  isRtl={isRtl}
+                  onOrder={() => { setSelectedItem(item); setShowWizard(true); }}
+                />
+              ))}
+            </motion.div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-center py-16 text-gray-400"
+            >
+              <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p className="text-sm">{isRtl ? "لا توجد منتجات مطابقة" : "No matching products"}</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Order Wizard with Prefilled configuration */}
+        <NewOrderWizard
+          isOpen={showWizard}
+          onClose={() => { setShowWizard(false); setSelectedItem(null); }}
+          initialOrderType="purchase_order"
+          prefillItems={selectedItem ? [{
+            id: selectedItem.id,
+            doorType: selectedItem.category,
+            doorTypeEn: selectedItem.categoryEn || selectedItem.category,
+            woodType: selectedItem.woodType || "oak",
+            woodTypeEn: selectedItem.woodTypeEn || "Natural Oak",
+            color: selectedItem.colors?.[0] ? COLOR_SWATCHES.find(c => c.id === selectedItem.colors[0])?.label || "طبيعي" : "طبيعي",
+            colorEn: selectedItem.colors?.[0] ? COLOR_SWATCHES.find(c => c.id === selectedItem.colors[0])?.labelEn || "Natural" : "Natural",
+            colorHex: selectedItem.colors?.[0] ? COLOR_SWATCHES.find(c => c.id === selectedItem.colors[0])?.hex || "#C8A96E" : "#C8A96E",
+            width: 90,
+            height: 210,
+            thickness: 45,
+            quantity: 1,
+            unitPrice: selectedItem.discountedPrice || selectedItem.price,
+            image: selectedItem.image,
+            notes: selectedItem.name || ""
+          }] : undefined}
+        />
+      </div>
     </DistributorLayout>
   );
 }
+
