@@ -38,13 +38,15 @@ interface ConfiguredItem {
   unitPrice: number;
   image: string;
   notes: string;
+  selections: Record<string, string>;
+  subSelections: Record<string, Record<string, string | number>>;
 }
 
 interface WizardProps {
   isOpen: boolean;
   onClose: () => void;
   initialOrderType?: OrderType;
-  prefillItems?: ConfiguredItem[];
+  prefillItems?: any[];
   draftId?: string;
 }
 
@@ -86,12 +88,71 @@ const STANDARD_SIZES = [
   { label: "مقاس مخصص", labelEn: "Custom Size", w: 0, h: 0, t: 4 },
 ];
 
+const SECTION_ICONS: Record<string, string> = {
+  door_type: "🚪",
+  door_color: "🎨",
+  door_shape: "🏛️",
+  accessories: "🔩",
+  delivery: "🚚",
+  installation: "🔧",
+  extra_services: "⭐",
+  special_requests: "💬",
+  dimensions: "📐",
+};
+
+export const KEY_TRANSLATIONS: Record<string, string> = {
+  material: "نوع الباب",
+  color_choice: "اللون",
+  style: "التصميم",
+  lock: "القفل",
+  hinge: "المفصلات",
+  handle: "المقبض",
+  door_closer: "رداد إغلاق",
+  door_stopper: "مصد الباب",
+  smoke_seal: "مانع الدخان",
+  delivery_method: "طريقة الاستلام",
+  install_choice: "التركيب",
+  measurement: "رفع المقاسات",
+  sales_consultant: "استشاري المبيعات",
+  special_notes: "ملاحظات خاصة",
+  door_leaf_height: "طول الدرفة",
+  opening_height: "طول الفتحة الإنشائية",
+  width: "العرض",
+  wall_thickness: "سمك الجدار",
+  frame_width: "عرض البرواز",
+  frame_height: "طول البرواز",
+};
+
 // ─── Helpers ────────────────────────────────────────────────
-function calcUnitPrice(doorType: string, woodId: string, colorId: string): number {
-  const door = DOOR_TYPES.find((d) => d.id === doorType);
-  const wood = WOOD_TYPES.find((w) => w.id === woodId);
-  const color = COLORS.find((c) => c.id === colorId);
-  return (door?.basePrice ?? 900) + (wood?.priceAdd ?? 0) + (color?.priceAdd ?? 0);
+function calcPriceAdj(
+  sections: any[],
+  selections: Record<string, string>,
+  subSelections: Record<string, Record<string, string | number>>
+): number {
+  let total = 0;
+  for (const sec of sections) {
+    for (const grp of sec.groups) {
+      if (!grp.enabled) continue;
+      const sel = selections[grp.id];
+      if (grp.type === "toggle" && (sel === "true" || (sel as any) === true)) {
+        total += grp.priceAdj ?? 0;
+      } else if (typeof sel === "string") {
+        const val = grp.values?.find((v: any) => v.id === sel);
+        if (val) total += val.priceAdj ?? 0;
+        // Sub-options price
+        if (val?.hasSubOptions && val.subOptions) {
+          for (const sub of val.subOptions) {
+            const subSel = subSelections[grp.id]?.[sub.id];
+            if (sub.values && typeof subSel === "string") {
+              const sv = sub.values.find((v: any) => v.id === subSel);
+              if (sv) total += sv.priceAdj ?? 0;
+            }
+          }
+        }
+      }
+    }
+  }
+  return total;
 }
 
 function generateId() {
@@ -110,12 +171,499 @@ function emptyItem(): ConfiguredItem {
     colorHex: "#C8A96E",
     width: 90,
     height: 210,
-    thickness: 4,
+    thickness: 15,
     quantity: 1,
     unitPrice: 0,
     image: "",
     notes: "",
+    selections: {
+      material: "",
+      color_choice: "",
+      width: "90",
+      door_leaf_height: "210",
+      wall_thickness: "15",
+    },
+    subSelections: {},
   };
+}
+
+function DoorDiagram({ width, height }: { width: number; height: number }) {
+  const svgW = 220;
+  const svgH = 300;
+  const doorX = 50;
+  const doorY = 20;
+  const doorW = 120;
+  const doorH = 220;
+  const frameT = 8;
+
+  return (
+    <svg
+      viewBox={`0 0 ${svgW} ${svgH}`}
+      className="w-full max-w-[160px] mx-auto"
+      aria-label="رسم توضيحي للباب"
+    >
+      {/* خلفية الجدار */}
+      <rect x="0" y="0" width={svgW} height={svgH} fill="#F9FAFB" rx="8" />
+
+      {/* إطار الباب */}
+      <rect
+        x={doorX - frameT}
+        y={doorY - frameT}
+        width={doorW + frameT * 2}
+        height={doorH + frameT}
+        fill="oklch(0.38 0.06 160)"
+        rx="3"
+      />
+
+      {/* لوح الباب */}
+      <rect
+        x={doorX}
+        y={doorY}
+        width={doorW}
+        height={doorH}
+        fill="oklch(0.68 0.10 60)"
+        rx="2"
+      />
+
+      {/* لوحات الزخرفة */}
+      <rect
+        x={doorX + 10}
+        y={doorY + 15}
+        width={doorW - 20}
+        height={doorH * 0.38}
+        fill="rgba(255,255,255,0.15)"
+        rx="2"
+      />
+      <rect
+        x={doorX + 10}
+        y={doorY + doorH * 0.45}
+        width={doorW - 20}
+        height={doorH * 0.48}
+        fill="rgba(255,255,255,0.15)"
+        rx="2"
+      />
+
+      {/* المقبض */}
+      <circle
+        cx={doorX + doorW - 15}
+        cy={doorY + doorH / 2}
+        r="4"
+        fill="oklch(0.38 0.06 160)"
+      />
+      <rect
+        x={doorX + doorW - 17}
+        y={doorY + doorH / 2 - 12}
+        width="4"
+        height="24"
+        rx="2"
+        fill="oklch(0.38 0.06 160)"
+      />
+
+      {/* خط الأرضية */}
+      <line
+        x1="10"
+        y1={doorY + doorH}
+        x2={svgW - 10}
+        y2={doorY + doorH}
+        stroke="oklch(0.38 0.06 160)"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+
+      {/* رؤوس الأسهم */}
+      <defs>
+        <marker
+          id="dw-arrow"
+          markerWidth="6"
+          markerHeight="6"
+          refX="3"
+          refY="3"
+          orient="auto"
+        >
+          <path d="M0,0 L6,3 L0,6 Z" fill="oklch(0.68 0.10 60)" />
+        </marker>
+        <marker
+          id="dw-arrow-rev"
+          markerWidth="6"
+          markerHeight="6"
+          refX="3"
+          refY="3"
+          orient="auto-start-reverse"
+        >
+          <path d="M0,0 L6,3 L0,6 Z" fill="oklch(0.68 0.10 60)" />
+        </marker>
+      </defs>
+
+      {/* سهم العرض */}
+      <line
+        x1={doorX}
+        y1={doorY + doorH + 20}
+        x2={doorX + doorW}
+        y2={doorY + doorH + 20}
+        stroke="oklch(0.68 0.10 60)"
+        strokeWidth="1.5"
+        markerStart="url(#dw-arrow-rev)"
+        markerEnd="url(#dw-arrow)"
+      />
+      <text
+        x={doorX + doorW / 2}
+        y={doorY + doorH + 34}
+        textAnchor="middle"
+        fontSize="11"
+        fontWeight="700"
+        fill="oklch(0.68 0.10 60)"
+        fontFamily="system-ui"
+      >
+        {width > 0 ? `${width} سم` : "العرض"}
+      </text>
+
+      {/* سهم الارتفاع */}
+      <line
+        x1={doorX + doorW + 20}
+        y1={doorY}
+        x2={doorX + doorW + 20}
+        y2={doorY + doorH}
+        stroke="oklch(0.68 0.10 60)"
+        strokeWidth="1.5"
+        markerStart="url(#dw-arrow-rev)"
+        markerEnd="url(#dw-arrow)"
+      />
+      <text
+        x={doorX + doorW + 38}
+        y={doorY + doorH / 2 + 4}
+        textAnchor="middle"
+        fontSize="11"
+        fontWeight="700"
+        fill="oklch(0.68 0.10 60)"
+        fontFamily="system-ui"
+        transform={`rotate(-90, ${doorX + doorW + 38}, ${doorY + doorH / 2 + 4})`}
+      >
+        {height > 0 ? `${height} سم` : "الطول"}
+      </text>
+    </svg>
+  );
+}
+
+function SubOptionInput({
+  sub,
+  value,
+  onChange,
+}: {
+  sub: any;
+  value: string | number | undefined;
+  onChange: (v: string | number) => void;
+}) {
+  if (sub.type === "chips" && sub.values) {
+    return (
+      <div className="mt-2 pt-2 border-t border-dashed border-[oklch(0.68_0.10_60)]/30 text-right">
+        <p className="text-[10px] text-gray-400 mb-1">{sub.label}</p>
+        <div className="flex flex-wrap gap-1">
+          {sub.values
+            .filter((v: any) => v.enabled)
+            .map((v: any) => (
+              <button
+                key={v.id}
+                onClick={() => onChange(v.id)}
+                className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-all ${
+                  value === v.id
+                    ? "bg-[oklch(0.38_0.06_160)] text-white border-[oklch(0.38_0.06_160)]"
+                    : "bg-white text-gray-600 border-gray-200 hover:border-[oklch(0.38_0.06_160)/0.5]"
+                }`}
+              >
+                {v.label}
+                {v.priceAdj ? (
+                  <span className="ml-1 text-[9px] opacity-80">
+                    +{v.priceAdj} ر.س
+                  </span>
+                ) : null}
+              </button>
+            ))}
+        </div>
+      </div>
+    );
+  }
+  if (sub.type === "number_input") {
+    return (
+      <div className="mt-2 pt-2 border-t border-dashed border-[oklch(0.68_0.10_60)]/30 text-right">
+        <p className="text-[10px] text-gray-400 mb-1">{sub.label}</p>
+        <div className="flex items-center gap-1.5">
+          <input
+            type="number"
+            min={sub.min}
+            max={sub.max}
+            placeholder={sub.placeholder}
+            value={value ?? ""}
+            onChange={(e) => onChange(Number(e.target.value))}
+            className="w-20 px-2 py-1 border border-gray-200 rounded text-[10px] focus:outline-none focus:border-[oklch(0.38_0.06_160)]"
+          />
+          {sub.unit && (
+            <span className="text-[10px] text-gray-400">{sub.unit}</span>
+          )}
+        </div>
+      </div>
+    );
+  }
+  if (sub.type === "file_upload") {
+    return (
+      <div className="mt-2 pt-2 border-t border-dashed border-[oklch(0.68_0.10_60)]/30 text-right">
+        <p className="text-[10px] text-gray-400 mb-1">{sub.label}</p>
+        <label className="flex items-center gap-1 px-2.5 py-1 border border-dashed border-gray-300 rounded cursor-pointer hover:border-[oklch(0.38_0.06_160)/0.5] transition-colors w-fit">
+          <Upload className="w-3 h-3 text-gray-400" />
+          <span className="text-[10px] text-gray-500">
+            {sub.placeholder ?? "رفع ملف"}
+          </span>
+          <input
+            type="file"
+            className="hidden"
+            accept=".jpg,.jpeg,.png,.pdf,.dwg"
+          />
+        </label>
+      </div>
+    );
+  }
+  return null;
+}
+
+function GroupRenderer({
+  group,
+  value,
+  subValues,
+  onChange,
+  onSubChange,
+  isRtl,
+}: {
+  group: any;
+  value: string | boolean | number | string[] | undefined;
+  subValues: Record<string, string | number> | undefined;
+  onChange: (v: string | boolean | number) => void;
+  onSubChange: (subId: string, v: string | number) => void;
+  isRtl: boolean;
+}) {
+  const enabledValues = (group.values || []).filter((v: any) => v.enabled);
+
+  if (group.type === "section_header") {
+    return (
+      <div className="flex items-center gap-2 py-1">
+        <div className="flex-1 h-px bg-gray-100" />
+        {group.hint && (
+          <p className="text-xs text-gray-400 flex items-center gap-1">
+            <Info className="w-3 h-3 flex-shrink-0" /> {group.hint}
+          </p>
+        )}
+        <div className="flex-1 h-px bg-gray-100" />
+      </div>
+    );
+  }
+
+  if (group.type === "radio_cards") {
+    return (
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {enabledValues.map((v: any) => {
+          const selected = String(value) === v.id;
+          return (
+            <div
+              key={v.id}
+              onClick={() => onChange(v.id)}
+              className={`relative p-2.5 rounded-lg border text-right transition-all cursor-pointer ${
+                selected
+                  ? "border-[oklch(0.38_0.06_160)] bg-[oklch(0.38_0.06_160)]/5 shadow-sm font-semibold"
+                  : "border-gray-200 bg-white hover:border-[oklch(0.38_0.06_160)]/40"
+              }`}
+            >
+              {selected && (
+                <span className="absolute top-1.5 left-1.5 w-4 h-4 bg-[oklch(0.38_0.06_160)] rounded-full flex items-center justify-center">
+                  <Check className="w-2.5 h-2.5 text-white" />
+                </span>
+              )}
+              <p className="font-semibold text-xs text-gray-800">{v.label}</p>
+              {v.description && (
+                <p className="text-[10px] text-gray-550 mt-0.5 leading-relaxed">
+                  {v.description}
+                </p>
+              )}
+              {v.priceAdj !== undefined && v.priceAdj !== 0 && (
+                <p className={`text-[10px] font-bold mt-1 ${v.priceAdj > 0 ? "text-[oklch(0.68_0.10_60)]" : "text-green-600"}`}>
+                  {v.priceAdj > 0 ? `+${v.priceAdj}` : v.priceAdj} ر.س
+                </p>
+              )}
+              {selected && v.hasSubOptions && v.subOptions && (
+                <div onClick={(e) => e.stopPropagation()} className="mt-2">
+                  {v.subOptions.map((sub: any) => (
+                    <SubOptionInput
+                      key={sub.id}
+                      sub={sub}
+                      value={subValues?.[sub.id]}
+                      onChange={(sv) => onSubChange(sub.id, sv)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (group.type === "color_swatches") {
+    return (
+      <div className="flex flex-wrap gap-2">
+        {enabledValues.map((v: any) => {
+          const selected = String(value) === v.id;
+          return (
+            <button
+              key={v.id}
+              onClick={() => onChange(v.id)}
+              title={v.label}
+              className="flex flex-col items-center gap-1 transition-all"
+            >
+              <div
+                className={`w-9 h-9 rounded-full border-2 transition-all`}
+                style={{
+                  backgroundColor: v.hex || "#E0E0E0",
+                  borderColor: selected ? "oklch(0.38 0.06 160)" : "white",
+                  boxShadow: selected ? "0 0 0 2px oklch(0.38 0.06 160 / 0.3)" : "none",
+                }}
+              >
+                {v.id === "custom" && (
+                  <div className="w-full h-full rounded-full bg-gradient-to-br from-red-400 via-yellow-400 to-blue-400 flex items-center justify-center">
+                    <Plus className="w-3.5 h-3.5 text-white" />
+                  </div>
+                )}
+                {selected && v.id !== "custom" && (
+                  <div className="w-full h-full rounded-full flex items-center justify-center bg-black/20">
+                    <Check className="w-3.5 h-3.5 text-white" />
+                  </div>
+                )}
+              </div>
+              <span className={`text-[9px] ${selected ? "text-[oklch(0.38_0.06_160)] font-semibold" : "text-gray-500"}`}>
+                {v.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (group.type === "chips") {
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {enabledValues.map((v: any) => {
+          const selected = String(value) === v.id;
+          return (
+            <button
+              key={v.id}
+              onClick={() => onChange(v.id)}
+              className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+                selected
+                  ? "bg-[oklch(0.38_0.06_160)] text-white border-[oklch(0.38_0.06_160)] shadow-sm"
+                  : "bg-white text-gray-700 border-gray-200 hover:border-[oklch(0.38_0.06_160)]/50"
+              }`}
+            >
+              {v.label}
+              {v.priceAdj !== undefined && v.priceAdj !== 0 && (
+                <span className={`mr-1 text-[10px] ${selected ? "text-white/85" : "text-[oklch(0.68_0.10_60)]"}`}>
+                  {v.priceAdj > 0 ? `+${v.priceAdj}` : v.priceAdj} ر.س
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (group.type === "toggle") {
+    const isOn = value === true || String(value) === "true";
+    return (
+      <button
+        onClick={() => onChange(!isOn)}
+        className={`flex items-center justify-between w-full p-2.5 rounded-lg border transition-all ${
+          isOn
+            ? "border-[oklch(0.38_0.06_160)] bg-[oklch(0.38_0.06_160)]/5"
+            : "border-gray-200 bg-white hover:border-[oklch(0.38_0.06_160)]/30"
+        }`}
+      >
+        <div className="text-right">
+          <p className="font-medium text-xs text-gray-800">
+            {isOn ? (isRtl ? "مفعّل" : "Enabled") : (isRtl ? "غير مفعّل" : "Disabled")}
+          </p>
+          {group.priceAdj !== undefined && group.priceAdj > 0 && (
+            <p className="text-[10px] text-[oklch(0.68_0.10_60)] font-bold mt-0.5">
+              +{group.priceAdj} ر.س
+            </p>
+          )}
+        </div>
+        <div
+          className={`w-10 h-5 rounded-full transition-all relative ${isOn ? "bg-[oklch(0.38_0.06_160)]" : "bg-gray-200"}`}
+        >
+          <div
+            className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${isOn ? (isRtl ? "right-1" : "left-1") : (isRtl ? "left-1" : "right-1")}`}
+          />
+        </div>
+      </button>
+    );
+  }
+
+  if (group.type === "number_input") {
+    return (
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          min={group.min}
+          max={group.max}
+          placeholder={group.placeholder}
+          value={typeof value === "boolean" ? "" : (value ?? "")}
+          onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))}
+          className="w-24 text-xs h-8 focus:border-[oklch(0.38_0.06_160)]"
+        />
+        {group.unit && (
+          <span className="text-xs text-gray-500">{group.unit}</span>
+        )}
+        {group.min && group.max && (
+          <span className="text-[10px] text-gray-400">
+            ({group.min}–{group.max})
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (group.type === "text_input") {
+    return (
+      <textarea
+        placeholder={group.placeholder}
+        value={String(value ?? "")}
+        onChange={(e) => onChange(e.target.value)}
+        rows={2}
+        className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[oklch(0.38_0.06_160)] resize-none"
+      />
+    );
+  }
+
+  if (group.type === "file_upload") {
+    return (
+      <label className="flex flex-col items-center gap-1.5 p-4 border border-dashed border-gray-200 rounded-lg cursor-pointer hover:border-[oklch(0.38_0.06_160)]/50 transition-colors">
+        <Upload className="w-5 h-5 text-gray-300" />
+        <div className="text-center">
+          <p className="text-[10px] font-medium text-gray-600">
+            {isRtl ? "اضغط لرفع ملف" : "Click to upload file"}
+          </p>
+          <p className="text-[9px] text-gray-400 mt-0.5">
+            {group.placeholder || "PDF, DWG, PNG, JPG"}
+          </p>
+        </div>
+        <input
+          type="file"
+          className="hidden"
+          accept=".jpg,.jpeg,.png,.pdf,.dwg"
+        />
+      </label>
+    );
+  }
+
+  return null;
 }
 
 // ─── Step Indicator ─────────────────────────────────────────
@@ -157,7 +705,22 @@ export default function NewOrderWizard({ isOpen, onClose, initialOrderType, pref
   // Wizard state
   const [step, setStep] = useState(0);
   const [orderType, setOrderType] = useState<OrderType>(initialOrderType ?? "purchase_order");
-  const [items, setItems] = useState<ConfiguredItem[]>(prefillItems ?? [emptyItem()]);
+  const [items, setItems] = useState<ConfiguredItem[]>(() => {
+    if (prefillItems && prefillItems.length > 0) {
+      return prefillItems.map(it => ({
+        ...it,
+        selections: it.selections || {
+          material: it.woodType || "",
+          color_choice: it.color || "",
+          width: String(it.width || "90"),
+          door_leaf_height: String(it.height || "210"),
+          wall_thickness: String(it.thickness || "15"),
+        },
+        subSelections: it.subSelections || {},
+      }));
+    }
+    return [emptyItem()];
+  });
   const [activeItemIdx, setActiveItemIdx] = useState(0);
   const [projectName, setProjectName] = useState("");
   const [projectNotes, setProjectNotes] = useState("");
@@ -171,6 +734,11 @@ export default function NewOrderWizard({ isOpen, onClose, initialOrderType, pref
     staleTime: 5 * 60 * 1000, // 5 دقائق
     enabled: isOpen,
   });
+
+  const enabledSections = useMemo(() => {
+    if (!dbOptions) return [];
+    return (dbOptions as any[]).filter((s: any) => s.enabled);
+  }, [dbOptions]);
 
   // ── خيارات ديناميكية (من قاعدة البيانات أو الثوابت كـ fallback) ──
   const dynamicDoorTypes = useMemo(() => {
@@ -293,27 +861,30 @@ export default function NewOrderWizard({ isOpen, onClose, initialOrderType, pref
     setItems((prev) => {
       const next = [...prev];
       const updated = { ...next[activeItemIdx], ...patch };
-      // Recalculate price when relevant fields change
-      if (patch.doorType || patch.woodType || patch.color) {
-        // استخدام الخيارات الديناميكية لحساب السعر
-        const doorId = patch.doorType ?? updated.doorType;
-        const woodId = patch.woodType ?? updated.woodType;
-        const colorId = patch.color ?? updated.color;
-        const door = dynamicDoorTypes.find((d: any) => d.id === doorId);
-        const wood = dynamicWoodTypes.find((w: any) => w.id === woodId);
-        const color = dynamicColors.find((c: any) => c.id === colorId);
-        updated.unitPrice = (door?.basePrice ?? 900) + (wood?.priceAdd ?? 0) + (color?.priceAdd ?? 0);
-        // Update image from door type
-        if (door) updated.image = door.image;
-        // Update labels
-        if (door) { updated.doorTypeEn = door.labelEn; }
-        if (wood) { updated.woodTypeEn = wood.labelEn; }
-        if (color) { updated.colorEn = color.labelEn; updated.colorHex = color.hex; }
+
+      // Base price of category
+      const doorCat = DOOR_TYPES.find((d: any) => d.id === updated.doorType);
+      const basePrice = doorCat?.basePrice ?? 850;
+
+      // Adjustments from selections/subSelections
+      const adjustments = calcPriceAdj(dbOptions || [], updated.selections, updated.subSelections);
+
+      // Discount
+      const discount = distributor?.discount ?? 0;
+
+      // Updated unit price
+      updated.unitPrice = Math.round((basePrice + adjustments) * (1 - discount / 100));
+
+      // Update image from door category if it changed
+      if (doorCat) {
+        updated.image = doorCat.image;
+        updated.doorTypeEn = doorCat.labelEn;
       }
+
       next[activeItemIdx] = updated;
       return next;
     });
-  }, [activeItemIdx, dynamicDoorTypes, dynamicWoodTypes, dynamicColors]);
+  }, [activeItemIdx, dbOptions, distributor]);
 
   const addItem = () => {
     setItems((prev) => [...prev, emptyItem()]);
@@ -327,7 +898,22 @@ export default function NewOrderWizard({ isOpen, onClose, initialOrderType, pref
   };
 
   const totalAmount = items.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
-  const isItemComplete = (it: ConfiguredItem) => it.doorType && it.woodType && it.color && it.width > 0 && it.height > 0 && it.quantity > 0;
+  const isItemComplete = (it: ConfiguredItem) => {
+    if (!it.doorType || !it.quantity || it.quantity <= 0) return false;
+    if (!dbOptions) {
+      return !!(it.woodType && it.color && it.width > 0 && it.height > 0);
+    }
+    for (const section of enabledSections) {
+      for (const grp of section.groups) {
+        if (!grp.enabled || !grp.required) continue;
+        if (grp.type === "toggle" || grp.type === "section_header") continue;
+        const val = it.selections[grp.id];
+        if (val === undefined || val === null || val === "") return false;
+        if (grp.type === "number_input" && Number(val) <= 0) return false;
+      }
+    }
+    return true;
+  };
   const allItemsComplete = items.every(isItemComplete);
 
   const steps = isRtl
@@ -351,22 +937,39 @@ export default function NewOrderWizard({ isOpen, onClose, initialOrderType, pref
     try {
       const result = await createOrderMutation.mutateAsync({
         orderType,
-        items: items.map(it => ({
-          doorType: it.doorType,
-          doorTypeEn: it.doorTypeEn,
-          woodType: it.woodType || undefined,
-          woodTypeEn: it.woodTypeEn || undefined,
-          color: it.color || undefined,
-          colorEn: it.colorEn || undefined,
-          colorHex: it.colorHex,
-          width: it.width,
-          height: it.height,
-          thickness: it.thickness,
-          quantity: it.quantity,
-          unitPrice: it.unitPrice,
-          notes: it.notes || undefined,
-          selections: {},
-        })),
+        items: items.map(it => {
+          const serializedSelections: Record<string, string> = {};
+          
+          for (const [k, v] of Object.entries(it.selections)) {
+            if (v !== undefined && v !== null && v !== "") {
+              serializedSelections[k] = String(v);
+            }
+          }
+          for (const [grpId, subObj] of Object.entries(it.subSelections)) {
+            for (const [subId, subVal] of Object.entries(subObj)) {
+              if (subVal !== undefined && subVal !== null && subVal !== "") {
+                serializedSelections[`${grpId}_${subId}`] = String(subVal);
+              }
+            }
+          }
+
+          return {
+            doorType: it.doorType,
+            doorTypeEn: it.doorTypeEn,
+            woodType: it.woodType || undefined,
+            woodTypeEn: it.woodTypeEn || undefined,
+            color: it.color || undefined,
+            colorEn: it.colorEn || undefined,
+            colorHex: it.colorHex,
+            width: it.width,
+            height: it.height,
+            thickness: it.thickness,
+            quantity: it.quantity,
+            unitPrice: it.unitPrice,
+            notes: it.notes || undefined,
+            selections: serializedSelections,
+          };
+        }),
         totalAmount,
         notes: [projectName, projectNotes].filter(Boolean).join(" - ") || undefined,
         source: "manual",
@@ -653,122 +1256,170 @@ export default function NewOrderWizard({ isOpen, onClose, initialOrderType, pref
                         </div>
                       </div>
 
-                      {/* Wood Type */}
-                      <div>
-                        <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">
-                          <TreePine className="w-3.5 h-3.5" />
-                          {isRtl ? "مادة الباب" : "Door Material"}
-                        </label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {(dynamicWoodTypes as any[]).map((wt: any) => (
-                            <button
-                              key={wt.id}
-                              onClick={() => updateItem({ woodType: wt.id, woodTypeEn: wt.labelEn })}
-                              className="flex items-center gap-3 p-2.5 rounded-lg border text-start transition-all hover:shadow-sm"
-                              style={{
-                                borderColor: item.woodType === wt.id ? "oklch(0.38 0.06 160)" : "#e5e7eb",
-                                background: item.woodType === wt.id ? "oklch(0.38 0.06 160 / 0.05)" : "white",
-                              }}
-                            >
-                              <div className="w-8 h-8 rounded-lg flex-shrink-0" style={{ background: wt.color }} />
-                              <div className="min-w-0">
-                                <div className="text-xs font-semibold truncate" style={{ color: "oklch(0.25 0.04 160)" }}>
-                                  {isRtl ? wt.label : wt.labelEn}
-                                </div>
-                                <div className="text-[10px] text-gray-400 truncate">{isRtl ? wt.desc : wt.descEn}</div>
+                      {/* Dynamic Sections from database */}
+                      {enabledSections.map((section: any) => {
+                        // Special rendering for dimensions section to include diagram and standard size helper buttons
+                        if (section.id === "dimensions") {
+                          return (
+                            <div key={section.id} className="space-y-3">
+                              <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">
+                                <Ruler className="w-3.5 h-3.5" />
+                                {isRtl ? section.label : section.labelEn || section.label}
+                              </label>
+
+                              {/* Standard sizes buttons */}
+                              <div className="flex flex-wrap gap-2 mb-3">
+                                {(dynamicStandardSizes as any[]).map((sz: any) => (
+                                  <button
+                                    key={sz.label}
+                                    type="button"
+                                    onClick={() => {
+                                      if (sz.w === 0) return; // custom
+                                      const nextSelections = {
+                                        ...item.selections,
+                                        width: String(sz.w),
+                                        door_leaf_height: String(sz.h),
+                                      };
+                                      updateItem({
+                                        width: sz.w,
+                                        height: sz.h,
+                                        selections: nextSelections,
+                                      });
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg text-xs border transition-all"
+                                    style={{
+                                      borderColor: item.width === sz.w && item.height === sz.h && sz.w !== 0 ? "oklch(0.38 0.06 160)" : "#e5e7eb",
+                                      background: item.width === sz.w && item.height === sz.h && sz.w !== 0 ? "oklch(0.38 0.06 160 / 0.08)" : "white",
+                                      color: item.width === sz.w && item.height === sz.h && sz.w !== 0 ? "oklch(0.38 0.06 160)" : "#6b7280",
+                                    }}
+                                  >
+                                    {isRtl ? sz.label : sz.labelEn}
+                                  </button>
+                                ))}
                               </div>
-                              {wt.priceAdd !== 0 && (
-                                <div className="text-[10px] font-medium flex-shrink-0" style={{ color: wt.priceAdd > 0 ? "#ef4444" : "#22c55e" }}>
-                                  {wt.priceAdd > 0 ? `+${wt.priceAdd}` : wt.priceAdd}
+
+                              {/* Door Diagram SVG preview and custom dimensions inputs */}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center bg-gray-50/50 p-3 rounded-xl border border-gray-100">
+                                <div>
+                                  <DoorDiagram width={item.width} height={item.height} />
                                 </div>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Color */}
-                      <div>
-                        <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">
-                          <Palette className="w-3.5 h-3.5" />
-                          {isRtl ? "اللون والتشطيب" : "Color & Finish"}
-                        </label>
-                        <div className="flex flex-wrap gap-2">
-                          {(dynamicColors as any[]).map((c: any) => (
-                            <button
-                              key={c.id}
-                              onClick={() => updateItem({ color: c.label, colorEn: c.labelEn, colorHex: c.hex })}
-                              title={isRtl ? c.label : c.labelEn}
-                              className="flex flex-col items-center gap-1 transition-all"
-                            >
-                              <div
-                                className="w-9 h-9 rounded-full border-2 transition-all"
-                                style={{
-                                  background: c.hex,
-                                  borderColor: item.color === c.label ? "oklch(0.68 0.10 60)" : "#e5e7eb",
-                                  boxShadow: item.color === c.label ? "0 0 0 3px oklch(0.68 0.10 60 / 0.3)" : "none",
-                                  outline: c.hex === "#F5F5F0" ? "1px solid #e5e7eb" : "none",
-                                }}
-                              />
-                              <span className="text-[9px] text-gray-500 text-center max-w-[40px] leading-tight">
-                                {isRtl ? c.label : c.labelEn}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Dimensions */}
-                      <div>
-                        <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">
-                          <Ruler className="w-3.5 h-3.5" />
-                          {isRtl ? "المقاسات" : "Dimensions"}
-                        </label>
-                        {/* Standard sizes */}
-                        <div className="flex flex-wrap gap-2 mb-3">
-                          {(dynamicStandardSizes as any[]).map((sz: any) => (
-                            <button
-                              key={sz.label}
-                              onClick={() => {
-                                if (sz.w === 0) return; // custom
-                                updateItem({ width: sz.w, height: sz.h, thickness: sz.t });
-                              }}
-                              className="px-2.5 py-1 rounded-lg text-xs border transition-all"
-                              style={{
-                                borderColor: item.width === sz.w && item.height === sz.h && sz.w !== 0 ? "oklch(0.38 0.06 160)" : "#e5e7eb",
-                                background: item.width === sz.w && item.height === sz.h && sz.w !== 0 ? "oklch(0.38 0.06 160 / 0.08)" : "white",
-                                color: item.width === sz.w && item.height === sz.h && sz.w !== 0 ? "oklch(0.38 0.06 160)" : "#6b7280",
-                              }}
-                            >
-                              {isRtl ? sz.label : sz.labelEn}
-                            </button>
-                          ))}
-                        </div>
-                        {/* Custom dimensions */}
-                        <div className="grid grid-cols-3 gap-2">
-                          {[
-                            { key: "width" as const, label: isRtl ? "العرض (سم)" : "Width (cm)", min: dimensionRanges.wMin, max: dimensionRanges.wMax },
-                            { key: "height" as const, label: isRtl ? "الارتفاع (سم)" : "Height (cm)", min: dimensionRanges.hMin, max: dimensionRanges.hMax },
-                            { key: "thickness" as const, label: isRtl ? "السماكة (سم)" : "Thickness (cm)", min: dimensionRanges.tMin, max: dimensionRanges.tMax },
-                          ].map(({ key, label, min, max }) => (
-                            <div key={key}>
-                              <label className="text-[10px] text-gray-400 mb-1 block">{label}</label>
-                              <Input
-                                type="number"
-                                min={min}
-                                max={max}
-                                value={item[key]}
-                                onChange={(e) => {
-                                  const val = Number(e.target.value);
-                                  if (val >= min && val <= max) updateItem({ [key]: val });
-                                }}
-                                className="text-sm h-8"
-                              />
-                              <div className="text-[9px] text-gray-300 mt-0.5">{min}–{max} {isRtl ? "سم" : "cm"}</div>
+                                <div className="space-y-3">
+                                  {section.groups
+                                    .filter((grp: any) => grp.enabled)
+                                    .map((grp: any) => {
+                                      const val = item.selections[grp.id] ?? "";
+                                      return (
+                                        <div key={grp.id}>
+                                          <label className="text-[10px] text-gray-400 mb-1 block">
+                                            {isRtl ? grp.label : grp.labelEn || grp.label}
+                                          </label>
+                                          <div className="flex items-center gap-2">
+                                            <Input
+                                              type="number"
+                                              min={grp.min || 1}
+                                              max={grp.max || 9999}
+                                              value={val}
+                                              onChange={(e) => {
+                                                const rawVal = e.target.value;
+                                                const numVal = Number(rawVal);
+                                                const nextSelections = {
+                                                  ...item.selections,
+                                                  [grp.id]: rawVal,
+                                                };
+                                                const patch: Partial<ConfiguredItem> = {
+                                                  selections: nextSelections,
+                                                };
+                                                if (grp.id === "width") patch.width = numVal;
+                                                if (grp.id === "door_leaf_height") patch.height = numVal;
+                                                if (grp.id === "wall_thickness") patch.thickness = numVal;
+                                                updateItem(patch);
+                                              }}
+                                              className="text-sm h-8"
+                                            />
+                                            {grp.unit && <span className="text-xs text-gray-500">{grp.unit}</span>}
+                                          </div>
+                                          <div className="text-[9px] text-gray-300 mt-0.5">
+                                            {grp.min}–{grp.max} {grp.unit || (isRtl ? "سم" : "cm")}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+                              </div>
                             </div>
-                          ))}
-                        </div>
-                      </div>
+                          );
+                        }
+
+                        // For all other sections (door_type, door_color, door_shape, accessories, etc.)
+                        return (
+                          <div key={section.id} className="space-y-3 border-t border-gray-100 pt-4">
+                            <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">
+                              <span className="text-sm">{SECTION_ICONS[section.id] || "⚙️"}</span>
+                              {isRtl ? section.label : section.labelEn || section.label}
+                            </label>
+
+                            <div className="space-y-4">
+                              {section.groups
+                                .filter((grp: any) => grp.enabled)
+                                .map((grp: any) => {
+                                  const val = item.selections[grp.id];
+                                  const subSels = item.subSelections[grp.id] || {};
+                                  return (
+                                    <div key={grp.id} className="space-y-1.5">
+                                      <label className="text-xs font-medium text-gray-500 block">
+                                        {isRtl ? grp.label : grp.labelEn || grp.label}
+                                        {grp.required && <span className="text-red-500 ml-0.5">*</span>}
+                                      </label>
+                                      <GroupRenderer
+                                        group={grp}
+                                        value={val}
+                                        subValues={subSels}
+                                        isRtl={isRtl}
+                                        onChange={(v) => {
+                                          const nextSelections = {
+                                            ...item.selections,
+                                            [grp.id]: String(v),
+                                          };
+                                          const patch: Partial<ConfiguredItem> = {
+                                            selections: nextSelections,
+                                          };
+
+                                          if (grp.id === "material") {
+                                            const choice = grp.values?.find((x: any) => x.id === v);
+                                            if (choice) {
+                                              patch.woodType = choice.label;
+                                              patch.woodTypeEn = choice.labelEn || choice.label;
+                                            }
+                                          }
+                                          if (grp.id === "color_choice") {
+                                            const choice = grp.values?.find((x: any) => x.id === v);
+                                            if (choice) {
+                                              patch.color = choice.label;
+                                              patch.colorEn = choice.labelEn || choice.label;
+                                              patch.colorHex = choice.hex || "#C8A96E";
+                                            }
+                                          }
+
+                                          updateItem(patch);
+                                        }}
+                                        onSubChange={(subId, sv) => {
+                                          const nextSubSelections = {
+                                            ...item.subSelections,
+                                            [grp.id]: {
+                                              ...(item.subSelections[grp.id] || {}),
+                                              [subId]: sv,
+                                            },
+                                          };
+                                          updateItem({ subSelections: nextSubSelections });
+                                        }}
+                                      />
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        );
+                      })}
 
                       {/* Quantity */}
                       <div>

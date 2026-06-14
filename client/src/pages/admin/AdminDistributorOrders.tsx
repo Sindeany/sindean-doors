@@ -1,8 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { trpc } from "@/lib/trpc";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import AdminLayout from "@/components/admin/AdminLayout";
+import { KEY_TRANSLATIONS } from "@/components/distributor/NewOrderWizard";
 import {
   Package, Truck, CheckCircle2, Clock, XCircle, Search, Filter,
   ChevronDown, ChevronUp, CheckCheck, RotateCcw, Activity
@@ -243,14 +244,35 @@ export default function AdminDistributorOrders() {
                               </thead>
                               <tbody className="divide-y divide-gray-50">
                                 {o.rawItems.map((it: any, idx: number) => (
-                                  <tr key={idx} className="bg-white hover:bg-gray-50/50 transition-colors">
-                                    <td className="p-2 font-medium">{it.doorType || "—"}</td>
-                                    <td className="p-2 text-center">{it.quantity || "—"}</td>
-                                    <td className="p-2 text-center text-gray-600">{it.unitPrice ? `${it.unitPrice.toLocaleString()} ر.س` : "—"}</td>
-                                    <td className="p-2 text-center text-gray-600" dir="ltr">{it.width && it.height ? `${it.width}×${it.height}` : "—"}</td>
-                                    <td className="p-2 text-gray-600">{it.woodType || "—"}</td>
-                                    <td className="p-2 text-gray-600">{it.color || "—"}</td>
-                                  </tr>
+                                  <Fragment key={idx}>
+                                    <tr className="bg-white hover:bg-gray-50/50 transition-colors">
+                                      <td className="p-2 font-medium">{it.doorType || "—"}</td>
+                                      <td className="p-2 text-center">{it.quantity || "—"}</td>
+                                      <td className="p-2 text-center text-gray-600">{it.unitPrice ? `${it.unitPrice.toLocaleString()} ر.س` : "—"}</td>
+                                      <td className="p-2 text-center text-gray-600" dir="ltr">{it.width && it.height ? `${it.width}×${it.height}` : "—"}</td>
+                                      <td className="p-2 text-gray-600">{it.woodType || "—"}</td>
+                                      <td className="p-2 text-gray-600">{it.color || "—"}</td>
+                                    </tr>
+                                    {it.selections && Object.keys(it.selections).length > 0 && (
+                                      <tr className="bg-white">
+                                        <td colSpan={6} className="p-2 bg-gray-50/30 text-[10px] text-gray-500 border-t border-dashed border-gray-100">
+                                          <div className="flex flex-wrap gap-x-3 gap-y-1">
+                                            <span className="font-semibold text-gray-700">خيارات مخصصة:</span>
+                                            {Object.entries(it.selections).map(([key, val]) => {
+                                              if (["width", "door_leaf_height", "wall_thickness", "material", "color_choice"].includes(key)) return null;
+                                              const label = KEY_TRANSLATIONS[key] || key.replace(/_/g, " ");
+                                              const cleanVal = val === "true" ? "نعم" : val === "false" ? "لا" : val;
+                                              return (
+                                                <span key={key} className="bg-white px-1.5 py-0.5 rounded border border-gray-205">
+                                                  {label}: <strong className="text-gray-700">{String(cleanVal)}</strong>
+                                                </span>
+                                              );
+                                            })}
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </Fragment>
                                 ))}
                               </tbody>
                             </table>

@@ -8963,8 +8963,8 @@ var ordersRouter = router({
     });
     return orders.map((order) => ({
       ...order,
-      sizes: typeof order.sizes === "string" ? JSON.parse(order.sizes || "{}") : order.sizes,
-      options: typeof order.options === "string" ? JSON.parse(order.options || "{}") : order.options
+      sizes: typeof order.dimensions === "string" ? JSON.parse(order.dimensions || "{}") : order.dimensions,
+      options: typeof order.selections === "string" ? JSON.parse(order.selections || "{}") : order.selections
     }));
   }),
   // Dashboard statistics (admin only)
@@ -9046,8 +9046,8 @@ var ordersRouter = router({
     if (!order) throw new TRPCError13({ code: "NOT_FOUND" });
     return {
       ...order,
-      sizes: typeof order.sizes === "string" ? JSON.parse(order.sizes || "{}") : order.sizes,
-      options: typeof order.options === "string" ? JSON.parse(order.options || "{}") : order.options
+      sizes: typeof order.dimensions === "string" ? JSON.parse(order.dimensions || "{}") : order.dimensions,
+      options: typeof order.selections === "string" ? JSON.parse(order.selections || "{}") : order.selections
     };
   }),
   // Update order status (admin only)

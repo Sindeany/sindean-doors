@@ -154,12 +154,12 @@ const ordersRouter = router({
       });
       return orders.map((order) => ({
         ...order,
-        sizes: typeof order.sizes === "string"
-          ? JSON.parse(order.sizes || "{}")
-          : order.sizes,
-        options: typeof order.options === "string"
-          ? JSON.parse(order.options || "{}")
-          : order.options,
+        sizes: typeof (order as any).dimensions === "string"
+          ? JSON.parse((order as any).dimensions || "{}")
+          : (order as any).dimensions,
+        options: typeof (order as any).selections === "string"
+          ? JSON.parse((order as any).selections || "{}")
+          : (order as any).selections,
       }));
     }),
 
@@ -255,12 +255,12 @@ const ordersRouter = router({
       if (!order) throw new TRPCError({ code: "NOT_FOUND" });
       return {
         ...order,
-        sizes: typeof order.sizes === "string"
-          ? JSON.parse(order.sizes || "{}")
-          : order.sizes,
-        options: typeof order.options === "string"
-          ? JSON.parse(order.options || "{}")
-          : order.options,
+        sizes: typeof (order as any).dimensions === "string"
+          ? JSON.parse((order as any).dimensions || "{}")
+          : (order as any).dimensions,
+        options: typeof (order as any).selections === "string"
+          ? JSON.parse((order as any).selections || "{}")
+          : (order as any).selections,
       };
     }),
 
