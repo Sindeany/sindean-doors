@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { useDistributorAuth } from "@/contexts/DistributorAuthContext";
 import DistributorLayout from "@/components/distributor/DistributorLayout";
-import NewOrderWizard from "@/components/distributor/NewOrderWizard";
+import NewOrderWizard, { KEY_TRANSLATIONS } from "@/components/distributor/NewOrderWizard";
 import {
   orderStatusConfig,
   paymentStatusConfig,
@@ -17,7 +17,7 @@ import { trpc } from "@/lib/trpc";
 import {
   Search, Filter, ChevronDown, ChevronUp,
   Truck, Package, Clock, CheckCircle2, XCircle,
-  Eye, Download, Plus, RefreshCw, Loader2
+  Eye, Download, Plus, RefreshCw, Loader2, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,6 +94,7 @@ function OrderTracker({ status }: { status: DistributorOrder["status"] }) {
 
 function OrderCard({ order, onReorder }: { order: DistributorOrder; onReorder: (order: DistributorOrder) => void }) {
   const [expanded, setExpanded] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const { dir } = useLanguage();
   const statusCfg = orderStatusConfig[order.status];
   const paymentCfg = paymentStatusConfig[order.paymentStatus];
@@ -246,7 +247,7 @@ function OrderCard({ order, onReorder }: { order: DistributorOrder; onReorder: (
               size="sm"
               variant="outline"
               className="gap-1.5 text-xs"
-              onClick={() => toast.info(dir === "rtl" ? "عرض تفاصيل الطلب - قريباً" : "View order details - coming soon")}
+              onClick={() => setShowDetails(true)}
             >
               <Eye className="w-3.5 h-3.5" />
               {dir === "rtl" ? "عرض كامل" : "Full View"}
@@ -263,11 +264,133 @@ function OrderCard({ order, onReorder }: { order: DistributorOrder; onReorder: (
           </div>
         </div>
       )}
+
+      {showDetails && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden text-right" dir={dir}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+              <div>
+                <h3 className="text-lg font-bold font-mono" style={{ color: "oklch(0.25 0.04 160)" }}>
+                  {dir === "rtl" ? `تفاصيل الطلب: ${order.orderNumber}` : `Order Details: ${order.orderNumber}`}
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">{order.date}</p>
+              </div>
+              <button onClick={() => setShowDetails(false)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Status Section */}
+              <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-100">
+                <p className="text-xs font-semibold text-gray-400 mb-3">{dir === "rtl" ? "حالة الطلب" : "Order Status"}</p>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${statusCfg.color} border`}>
+                    {statusCfg.label}
+                  </span>
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${paymentCfg.color} border`}>
+                    {paymentCfg.label}
+                  </span>
+                </div>
+                <OrderTracker status={order.status} />
+              </div>
+
+              {/* Items List */}
+              <div className="space-y-4">
+                <h4 className="font-bold text-sm text-gray-700">{dir === "rtl" ? "المنتجات المطلوبة" : "Ordered Items"}</h4>
+                <div className="space-y-3">
+                  {order.products.map((p: any, idx: number) => (
+                    <div key={idx} className="p-4 rounded-xl border border-gray-100 bg-white space-y-3">
+                      {/* Product Header */}
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="font-bold text-sm" style={{ color: "oklch(0.25 0.04 160)" }}>
+                            {p.name}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {p.woodType || "—"} · {p.color || "—"} · {p.width && p.height ? `${p.width}×${p.height}×${p.thickness || 4} سم` : "—"}
+                          </div>
+                        </div>
+                        <div className="text-left">
+                          <div className="font-semibold text-xs text-gray-400">{dir === "rtl" ? "الالكمية" : "Qty"}: {p.qty}</div>
+                          <div className="font-bold text-sm" style={{ color: 'oklch(0.38 0.06 160)' }}>{p.total.toLocaleString()} {dir === "rtl" ? "ر.س" : "SAR"}</div>
+                        </div>
+                      </div>
+
+                      {/* Custom Selections */}
+                      {p.selections && Object.keys(p.selections).length > 0 && (
+                        <div className="pt-2.5 border-t border-dashed border-gray-100">
+                          <div className="text-xs text-gray-400 mb-1.5 font-medium">{dir === "rtl" ? "الخيارات المحددة:" : "Selected Options:"}</div>
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(p.selections).map(([key, val]) => {
+                              if (["width", "door_leaf_height", "wall_thickness", "material", "color_choice"].includes(key)) return null;
+                              const label = KEY_TRANSLATIONS[key] || key.replace(/_/g, " ");
+                              const cleanVal = val === "true" ? "نعم" : val === "false" ? "لا" : val;
+                              return (
+                                <span key={key} className="bg-gray-50 text-[10px] text-gray-650 px-2 py-0.5 rounded border border-gray-150">
+                                  {label}: <strong className="text-gray-805">{String(cleanVal)}</strong>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Item-specific Notes */}
+                      {p.notes && (
+                        <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded-lg border border-gray-100">
+                          <span className="font-medium text-gray-700">{dir === "rtl" ? "ملاحظات البند:" : "Item Notes:"} </span>
+                          {p.notes}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Delivery and Notes */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-3 bg-gray-50/50 rounded-xl border border-gray-100">
+                  <div className="text-xs text-gray-400 mb-1">{dir === "rtl" ? "تاريخ الاستلام المتوقع" : "Expected Delivery"}</div>
+                  <div className="text-sm font-semibold text-gray-700">{order.deliveryDate}</div>
+                </div>
+                {order.trackingNumber && (
+                  <div className="p-3 bg-gray-50/50 rounded-xl border border-gray-100">
+                    <div className="text-xs text-gray-400 mb-1">{dir === "rtl" ? "رقم التتبع" : "Tracking Number"}</div>
+                    <div className="text-sm font-semibold font-mono text-blue-600">{order.trackingNumber}</div>
+                  </div>
+                )}
+              </div>
+              {order.notes && (
+                <div className="p-3 bg-gray-50/50 rounded-xl border border-gray-100">
+                  <div className="text-xs text-gray-400 mb-1">{dir === "rtl" ? "ملاحظات إضافية" : "Additional Notes"}</div>
+                  <div className="text-sm text-gray-600">{order.notes}</div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-between items-center flex-shrink-0">
+              <div>
+                <span className="text-xs text-gray-400">{dir === "rtl" ? "إجمالي الطلب:" : "Order Total:"}</span>
+                <div className="text-lg font-bold" style={{ color: "oklch(0.68 0.10 60)", fontFamily: "DM Serif Display, serif" }}>
+                  {order.totalAmount.toLocaleString()} {dir === "rtl" ? "ر.س" : "SAR"}
+                </div>
+              </div>
+              <Button onClick={() => setShowDetails(false)} style={{ background: "oklch(0.38 0.06 160)" }} className="text-white text-xs">
+                {dir === "rtl" ? "إغلاق" : "Close"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function mapOrderFromDB(o: any): DistributorOrder {
+function mapOrderFromDB(o: any): any {
   return {
     id: String(o.id),
     orderNumber: o.orderNumber,
@@ -277,6 +400,13 @@ function mapOrderFromDB(o: any): DistributorOrder {
       qty: it.quantity,
       unitPrice: it.unitPrice,
       total: it.quantity * it.unitPrice,
+      selections: it.selections,
+      woodType: it.woodType,
+      color: it.color,
+      width: it.width,
+      height: it.height,
+      thickness: it.thickness,
+      notes: it.notes,
     })),
     totalAmount: o.totalAmount,
     status: o.status,
@@ -332,7 +462,7 @@ export default function DistributorOrders() {
   const filtered = orders.filter((o) => {
     const matchSearch =
       o.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
-      o.products.some((p) => p.name.includes(search));
+      o.products.some((p: any) => p.name.includes(search));
     const matchStatus = statusFilter === "all" || o.status === statusFilter;
     return matchSearch && matchStatus;
   });
