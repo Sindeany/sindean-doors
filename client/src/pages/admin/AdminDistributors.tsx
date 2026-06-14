@@ -49,10 +49,10 @@ import { trpc } from "@/lib/trpc";
 import * as XLSX from "xlsx";
 
 // ─── Types ───────────────────────────────────────────────────
-type DistributorStatus = "active" | "pending" | "suspended" | "rejected";
-type DistributorTier = "bronze" | "silver" | "gold" | "platinum";
+export type DistributorStatus = "active" | "pending" | "suspended" | "rejected";
+export type DistributorTier = "bronze" | "silver" | "gold" | "platinum";
 
-interface Distributor {
+export interface Distributor {
   id: string;
   name: string;
   company: string;
@@ -215,7 +215,7 @@ const emptyDist = (): Omit<Distributor, "id"> => ({
 });
 
 // ─── Add / Edit Modal ─────────────────────────────────────────
-function DistributorFormModal({
+export function DistributorFormModal({
   initial,
   onClose,
   onSave,

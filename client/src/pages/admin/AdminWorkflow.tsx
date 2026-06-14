@@ -254,9 +254,29 @@ function mapDbOrderToWorkflow(o: {
   totalPrice: number;
 }): WorkflowOrder {
   const stage = (o.workflowStage ?? "po_review") as WorkflowStage;
-  const stages =
-    (o.workflowStagesData as WorkflowOrder["stages"] | null) ??
-    makeStages(stage);
+  
+  // لضمان وجود جميع الـ 15 مرحلة بخصائصها وتفادي أخطاء undefined (reading 'status')
+  // نقوم بدمج البيانات المخزنة بقاعدة البيانات مع بنية المراحل الافتراضية
+  const defaultStages = makeStages(stage);
+  let dbStages: Partial<WorkflowOrder["stages"]> = {};
+  
+  if (o.workflowStagesData) {
+    if (typeof o.workflowStagesData === "object") {
+      dbStages = o.workflowStagesData as Partial<WorkflowOrder["stages"]>;
+    } else if (typeof o.workflowStagesData === "string") {
+      try {
+        dbStages = JSON.parse(o.workflowStagesData) as Partial<WorkflowOrder["stages"]>;
+      } catch (e) {
+        console.error("Failed to parse workflowStagesData string:", e);
+      }
+    }
+  }
+
+  const stages = {
+    ...defaultStages,
+    ...dbStages,
+  } as WorkflowOrder["stages"];
+
   return {
     id: String(o.id),
     orderNumber: `SND-${String(o.id).padStart(4, "0")}`,

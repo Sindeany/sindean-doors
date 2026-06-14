@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import AdminLayout from "@/components/admin/AdminLayout";
 import * as XLSX from "xlsx";
 import { trpc } from "@/lib/trpc";
+import { DistributorFormModal, type Distributor } from "./AdminDistributors";
 
 // ─── Types ────────────────────────────────────────────────────
 type OrderStatus = "pending" | "approved" | "production" | "ready" | "shipped" | "delivered" | "cancelled";
@@ -195,6 +196,86 @@ export default function AdminDistributorProfile() {
       { id: distId },
       { retry: false, enabled: Number.isFinite(distId) && distId > 0 }
     );
+
+  const [showEditForm, setShowEditForm] = useState(false);
+
+  const updateDistributorMutation = trpc.distributorsAdmin.update.useMutation({
+    onSuccess: () => {
+      utils.distributorsAdmin.getById.invalidate({ id: distId });
+      utils.distributorsAdmin.list.invalidate();
+    },
+    onError: (err) => {
+      toast.error(err.message || "حدث خطأ أثناء تحديث بيانات الموزع");
+    },
+  });
+
+  const mapToFormDistributor = (d: any): Distributor => {
+    return {
+      id: String(d.id),
+      name: d.name ?? "",
+      company: d.company ?? "",
+      city: d.city ?? "",
+      region: d.region ?? "",
+      phone: d.phone ?? "",
+      email: d.email ?? "",
+      whatsapp: d.whatsapp ?? "",
+      website: d.website ?? "",
+      commercialReg: d.commercialReg ?? "",
+      vatNumber: d.vatNumber ?? "",
+      bankName: d.bankName ?? "",
+      bankIban: d.bankIban ?? "",
+      status: d.status ?? "pending",
+      tier: d.tier ?? "bronze",
+      joinDate: d.joinDate ?? "",
+      contractStart: d.contractStart ?? "",
+      contractEnd: d.contractEnd ?? "",
+      creditLimit: d.creditLimit ?? 50000,
+      discountRate: d.discountRate ?? 5,
+      totalOrders: d.totalOrders ?? 0,
+      totalRevenue: d.totalRevenue ?? 0,
+      avgRating: d.avgRating ?? 0,
+      pendingOrders: d.pendingOrders ?? 0,
+      openComplaints: d.openComplaints ?? 0,
+      notes: d.notes ?? "",
+      adminNotes: d.adminNotes ?? "",
+    };
+  };
+
+  const handleSaveDistributor = (d: Distributor) => {
+    const numId = parseInt(d.id);
+    const { id: _id, ...payload } = d;
+    if (!isNaN(numId)) {
+      updateDistributorMutation.mutate({
+        id: numId,
+        name: payload.name,
+        company: payload.company,
+        city: payload.city,
+        region: payload.region,
+        phone: payload.phone,
+        email: payload.email,
+        whatsapp: payload.whatsapp || undefined,
+        website: payload.website || undefined,
+        commercialReg: payload.commercialReg || undefined,
+        vatNumber: payload.vatNumber || undefined,
+        bankName: payload.bankName || undefined,
+        bankIban: payload.bankIban || undefined,
+        status: payload.status,
+        tier: payload.tier,
+        joinDate: payload.joinDate,
+        contractStart: payload.contractStart || undefined,
+        contractEnd: payload.contractEnd || undefined,
+        creditLimit: payload.creditLimit ?? 50000,
+        discountRate: payload.discountRate ?? 5,
+        totalOrders: payload.totalOrders ?? 0,
+        totalRevenue: payload.totalRevenue ?? 0,
+        avgRating: payload.avgRating ?? 0,
+        pendingOrders: payload.pendingOrders ?? 0,
+        openComplaints: payload.openComplaints ?? 0,
+        notes: payload.notes || undefined,
+        adminNotes: payload.adminNotes || undefined,
+      });
+    }
+  };
 
   const { data: rawComplaints } = trpc.complaints.list.useQuery({ distributorId: distId }, { enabled: Number.isFinite(distId) });
   const { data: rawPayments } = trpc.payments.list.useQuery({ distributorId: distId }, { enabled: Number.isFinite(distId) });
@@ -393,7 +474,7 @@ export default function AdminDistributorProfile() {
                   <MessageSquare className="w-4 h-4" /> واتساب
                 </Button>
               </a>
-              <Button variant="outline" className="gap-2 text-xs h-9">
+              <Button variant="outline" className="gap-2 text-xs h-9" onClick={() => setShowEditForm(true)}>
                 <Edit2 className="w-4 h-4" /> تعديل البيانات
               </Button>
             </div>
@@ -796,6 +877,14 @@ export default function AdminDistributorProfile() {
           utils.distributorOrders.list.invalidate();
         }}
       />
+
+      {showEditForm && (
+        <DistributorFormModal
+          initial={mapToFormDistributor(dist)}
+          onClose={() => setShowEditForm(false)}
+          onSave={handleSaveDistributor}
+        />
+      )}
     </AdminLayout>
   );
 }
