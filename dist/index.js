@@ -4548,6 +4548,13 @@ function toDistributorProfile(d, creditUsed = 0) {
     email: d.email,
     phone: d.phone,
     city: d.city,
+    region: d.region ?? "",
+    website: d.website ?? "",
+    whatsapp: d.whatsapp ?? "",
+    commercialReg: d.commercialReg ?? "",
+    vatNumber: d.vatNumber ?? "",
+    bankName: d.bankName ?? "",
+    bankIban: d.bankIban ?? "",
     tier: d.tier,
     discount: d.discountRate ?? 0,
     creditLimit: d.creditLimit ?? 0,
@@ -4772,6 +4779,63 @@ var distributorsRouter = router({
         }
       })()
     }));
+  }),
+  // ── تحديث الملف الشخصي للموزع ─────────────────────────────────────────────
+  updateProfile: distributorProcedure.input(
+    z12.object({
+      name: z12.string().min(1).max(255),
+      company: z12.string().min(1).max(255),
+      phone: z12.string().min(1).max(50),
+      city: z12.string().max(100),
+      region: z12.string().max(100).optional(),
+      website: z12.string().max(255).optional(),
+      whatsapp: z12.string().max(50).optional(),
+      commercialReg: z12.string().max(50).optional(),
+      vatNumber: z12.string().max(20).optional(),
+      bankName: z12.string().max(255).optional(),
+      bankIban: z12.string().max(40).optional()
+    })
+  ).mutation(async ({ ctx, input }) => {
+    const distId = ctx.distributor.id;
+    await db.update(schema_exports.distributors).set({
+      ...input,
+      updatedAt: Date.now()
+    }).where(eq13(schema_exports.distributors.id, distId));
+    return { success: true };
+  }),
+  // ── تحديث كلمة المرور للموزع ─────────────────────────────────────────────
+  updatePassword: distributorProcedure.input(
+    z12.object({
+      currentPassword: z12.string().min(1),
+      newPassword: z12.string().min(8)
+    })
+  ).mutation(async ({ ctx, input }) => {
+    const distId = ctx.distributor.id;
+    const distributor = await db.query.distributors.findFirst({
+      where: eq13(schema_exports.distributors.id, distId)
+    });
+    if (!distributor || !distributor.passwordHash) {
+      throw new TRPCError9({
+        code: "NOT_FOUND",
+        message: "\u0627\u0644\u0645\u0648\u0632\u0639 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F"
+      });
+    }
+    const valid = await bcrypt5.compare(
+      input.currentPassword,
+      distributor.passwordHash
+    );
+    if (!valid) {
+      throw new TRPCError9({
+        code: "UNAUTHORIZED",
+        message: "\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u0627\u0644\u062D\u0627\u0644\u064A\u0629 \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629"
+      });
+    }
+    const passwordHash = await bcrypt5.hash(input.newPassword, 10);
+    await db.update(schema_exports.distributors).set({
+      passwordHash,
+      updatedAt: Date.now()
+    }).where(eq13(schema_exports.distributors.id, distId));
+    return { success: true };
   })
 });
 

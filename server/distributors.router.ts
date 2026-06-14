@@ -31,6 +31,13 @@ function toDistributorProfile(d: typeof schema.distributors.$inferSelect, credit
     email: d.email,
     phone: d.phone,
     city: d.city,
+    region: d.region ?? "",
+    website: d.website ?? "",
+    whatsapp: d.whatsapp ?? "",
+    commercialReg: d.commercialReg ?? "",
+    vatNumber: d.vatNumber ?? "",
+    bankName: d.bankName ?? "",
+    bankIban: d.bankIban ?? "",
     tier: d.tier,
     discount: d.discountRate ?? 0,
     creditLimit: d.creditLimit ?? 0,
@@ -312,5 +319,74 @@ export const distributorsRouter = router({
           }
         })(),
       }));
+    }),
+
+  // ── تحديث الملف الشخصي للموزع ─────────────────────────────────────────────
+  updateProfile: distributorProcedure
+    .input(
+      z.object({
+        name: z.string().min(1).max(255),
+        company: z.string().min(1).max(255),
+        phone: z.string().min(1).max(50),
+        city: z.string().max(100),
+        region: z.string().max(100).optional(),
+        website: z.string().max(255).optional(),
+        whatsapp: z.string().max(50).optional(),
+        commercialReg: z.string().max(50).optional(),
+        vatNumber: z.string().max(20).optional(),
+        bankName: z.string().max(255).optional(),
+        bankIban: z.string().max(40).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const distId = ctx.distributor.id;
+      await db
+        .update(schema.distributors)
+        .set({
+          ...input,
+          updatedAt: Date.now(),
+        })
+        .where(eq(schema.distributors.id, distId));
+      return { success: true };
+    }),
+
+  // ── تحديث كلمة المرور للموزع ─────────────────────────────────────────────
+  updatePassword: distributorProcedure
+    .input(
+      z.object({
+        currentPassword: z.string().min(1),
+        newPassword: z.string().min(8),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const distId = ctx.distributor.id;
+      const distributor = await db.query.distributors.findFirst({
+        where: eq(schema.distributors.id, distId),
+      });
+      if (!distributor || !distributor.passwordHash) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "الموزع غير موجود",
+        });
+      }
+      const valid = await bcrypt.compare(
+        input.currentPassword,
+        distributor.passwordHash
+      );
+      if (!valid) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "كلمة المرور الحالية غير صحيحة",
+        });
+      }
+      const passwordHash = await bcrypt.hash(input.newPassword, 10);
+      await db
+        .update(schema.distributors)
+        .set({
+          passwordHash,
+          updatedAt: Date.now(),
+        })
+        .where(eq(schema.distributors.id, distId));
+      return { success: true };
     }),
 });

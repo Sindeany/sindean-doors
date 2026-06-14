@@ -31,6 +31,7 @@ import DistributorProducts from "./pages/distributor/DistributorProducts";
 import DistributorAccount from "./pages/distributor/DistributorAccount";
 import DistributorCatalogue from "./pages/distributor/DistributorCatalogue";
 import DistributorComplaints from "./pages/distributor/DistributorComplaints";
+import DistributorSettings from "./pages/distributor/DistributorSettings";
 
 // Admin Panel
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -130,6 +131,10 @@ function Router() {
         <Route
           path={"/distributor/complaints"}
           component={DistributorComplaints}
+        />
+        <Route
+          path={"/distributor/settings"}
+          component={DistributorSettings}
         />
 
         {/* Admin Panel */}

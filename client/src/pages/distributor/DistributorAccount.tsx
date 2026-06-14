@@ -58,7 +58,7 @@ export default function DistributorAccount() {
             variant="outline"
             size="sm"
             className="border-white/20 text-white hover:bg-white/10 gap-1.5 hidden sm:flex"
-            onClick={() => toast.info("تعديل الملف الشخصي - قريباً")}
+            onClick={() => navigate("/distributor/settings")}
           >
             <Edit className="w-3.5 h-3.5" />
             تعديل
@@ -102,7 +102,7 @@ export default function DistributorAccount() {
               variant="outline"
               size="sm"
               className="mt-4 gap-1.5 text-sm"
-              onClick={() => toast.info("تعديل البيانات - قريباً")}
+              onClick={() => navigate("/distributor/settings")}
             >
               <Edit className="w-3.5 h-3.5" />
               تعديل البيانات

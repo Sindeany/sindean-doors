@@ -23,12 +23,20 @@ export interface DistributorProfile {
   email: string;
   phone: string;
   city: string;
+  region?: string;
+  website?: string;
+  whatsapp?: string;
+  commercialReg?: string;
+  vatNumber?: string;
+  bankName?: string;
+  bankIban?: string;
   tier: "bronze" | "silver" | "gold" | "platinum";
   discount: number;
   creditLimit: number;
   creditUsed: number;
   joinDate: string;
   salesRep: string;
+  status?: string;
 }
 
 export interface MonthlySales {

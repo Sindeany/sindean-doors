@@ -173,18 +173,28 @@ export default function DistributorLayout({ children, title, subtitle }: Distrib
         })}
       </nav>
 
-      {/* Bottom items */}
       <div className="px-3 pb-4 space-y-1 border-t pt-4" style={{ borderColor: "oklch(1 0 0 / 0.08)" }}>
-        {bottomNavItems.map(({ icon: Icon, label }) => (
-          <button
-            key={label}
-            onClick={() => toast.info(`${label} - ${dir === "rtl" ? "قريباً" : "Coming Soon"}`)}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/50 hover:text-white hover:bg-white/5 transition-all"
-          >
-            <Icon className="w-4 h-4 flex-shrink-0" />
-            <span className="text-sm">{label}</span>
-          </button>
-        ))}
+        {bottomNavItems.map(({ icon: Icon, label }) => {
+          const isSettings = label === (dir === "rtl" ? "الإعدادات" : "Settings");
+          return (
+            <button
+              key={label}
+              onClick={() => {
+                if (isSettings) {
+                  navigate("/distributor/settings");
+                } else {
+                  toast.info(`${label} - ${dir === "rtl" ? "قريباً" : "Coming Soon"}`);
+                }
+              }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/50 hover:text-white hover:bg-white/5 transition-all ${
+                isSettings && location === "/distributor/settings" ? "text-white/90 bg-white/5 font-medium" : ""
+              }`}
+            >
+              <Icon className="w-4 h-4 flex-shrink-0" />
+              <span className="text-sm">{label}</span>
+            </button>
+          );
+        })}
         <button
           onClick={handleLogout}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-400/70 hover:text-red-400 hover:bg-red-400/10 transition-all"
