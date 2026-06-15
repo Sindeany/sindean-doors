@@ -89,6 +89,12 @@ export interface WorkflowOrder {
   >;
   priority: "normal" | "urgent" | "vip";
   totalValue: number;
+  productId?: string;
+  productName?: string;
+  selections?: Record<string, string>;
+  dimensions?: { width?: number; height?: number; thickness?: number } | null;
+  notes?: string | null;
+  paymentStatus?: "unpaid" | "partial" | "paid";
 }
 
 // ─── تعريف المراحل ───────────────────────────────────────────
@@ -241,18 +247,7 @@ export const WORKFLOW_PHASES = [
 ];
 
 // ─── تحويل طلب DB إلى WorkflowOrder ──────────────────────────
-function mapDbOrderToWorkflow(o: {
-  id: number;
-  customerName: string;
-  customerPhone: string;
-  totalDoors?: number | null;
-  createdAt: number;
-  expectedDelivery?: number | null;
-  workflowStage?: string | null;
-  workflowStagesData?: unknown;
-  priority?: string | null;
-  totalPrice: number;
-}): WorkflowOrder {
+function mapDbOrderToWorkflow(o: any): WorkflowOrder {
   const stage = (o.workflowStage ?? "po_review") as WorkflowStage;
   
   // لضمان وجود جميع الـ 15 مرحلة بخصائصها وتفادي أخطاء undefined (reading 'status')
@@ -292,6 +287,12 @@ function mapDbOrderToWorkflow(o: {
     stages,
     priority: (o.priority ?? "normal") as WorkflowOrder["priority"],
     totalValue: o.totalPrice,
+    productId: o.productId,
+    productName: o.productName,
+    selections: o.options || o.selections,
+    dimensions: o.sizes || o.dimensions,
+    notes: o.notes,
+    paymentStatus: o.paymentStatus || "unpaid",
   };
 }
 

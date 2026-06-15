@@ -21,7 +21,9 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import type { WorkflowOrder, WorkflowStage, StageStatus } from "@/pages/admin/AdminWorkflow";
 import { WORKFLOW_PHASES } from "@/pages/admin/AdminWorkflow";
+import { KEY_TRANSLATIONS } from "@/components/distributor/NewOrderWizard";
 
+// ─── مكوّن مرحلة واحدة ───────────────────────────────────────
 // ─── مكوّن مرحلة واحدة ───────────────────────────────────────
 function StagePanel({
   stageId,
@@ -31,6 +33,7 @@ function StagePanel({
   isActive,
   onAdvance,
   onBlock,
+  order,
 }: {
   stageId: WorkflowStage;
   stageInfo: { labelAr: string; labelEn: string; icon: React.ReactNode; step: number };
@@ -39,6 +42,7 @@ function StagePanel({
   isActive: boolean;
   onAdvance: (notes: string) => void;
   onBlock: (reason: string) => void;
+  order: WorkflowOrder;
 }) {
   const [expanded, setExpanded] = useState(isActive);
   const [notes, setNotes] = useState("");
@@ -57,66 +61,94 @@ function StagePanel({
 
   // محتوى خاص بكل مرحلة
   const stageContent: Partial<Record<WorkflowStage, React.ReactNode>> = {
-    po_review: (
-      <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: "عدد الأبواب", value: "48 باب" },
-            { label: "الموديل", value: "Classic WPC 900" },
-            { label: "المقاسات", value: "210×90 سم" },
-            { label: "الاتجاه", value: "يمين" },
-            { label: "نوع الإطار", value: "إطار مقاوم للرطوبة" },
-            { label: "نوع الحافة", value: "ABS 2mm" },
-            { label: "لون الباب", value: "أبيض ناصع (RAL 9003)" },
-            { label: "لون الإطار", value: "رمادي فاتح (RAL 7035)" },
-            { label: "نوع القفل", value: "قفل مقبض ذهبي" },
-            { label: "المفصلات", value: "مفصلة مخفية 3 قطع" },
-          ].map((item) => (
-            <div key={item.label} className="bg-gray-50 rounded-xl p-3">
-              <div className="text-xs text-gray-400 mb-0.5">{item.label}</div>
-              <div className="text-sm font-semibold text-gray-800">{item.value}</div>
+    po_review: (() => {
+      const dim = order.dimensions;
+      const dimStr = dim ? `${dim.height || 210}×${dim.width || 90}×${dim.thickness || 4} سم` : "—";
+      const cleanNotes = order.notes?.replace(/^DIST_ORDER_ID:\d+\s*-\s*/, "") || "لا توجد ملاحظات";
+
+      return (
+        <div className="space-y-4 text-right" dir="rtl">
+          {/* تفاصيل أساسية */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {[
+              { label: "عدد الأبواب", value: `${order.totalDoors} أبواب` },
+              { label: "الموديل", value: order.productName || "—" },
+              { label: "المقاسات", value: dimStr },
+              { label: "تاريخ الطلب", value: order.createdAt || "—" },
+              { label: "التسليم المتوقع", value: order.expectedDelivery || "—" },
+              { label: "القيمة الإجمالية", value: `${order.totalValue.toLocaleString()} ر.س` },
+            ].map((item) => (
+              <div key={item.label} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                <div className="text-xs text-gray-400 mb-0.5">{item.label}</div>
+                <div className="text-sm font-semibold text-gray-800">{item.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* الخيارات المحددة */}
+          {order.selections && Object.keys(order.selections).length > 0 && (
+            <div className="bg-gray-50/50 rounded-xl p-4 border border-gray-100 space-y-2">
+              <div className="text-xs font-semibold text-gray-500 mb-2">الخيارات الفنية للمنتج</div>
+              <div className="grid grid-cols-2 gap-2">
+                {Object.entries(order.selections).map(([key, val]) => {
+                  if (["width", "door_leaf_height", "wall_thickness", "material", "color_choice"].includes(key)) return null;
+                  const label = KEY_TRANSLATIONS[key] || key.replace(/_/g, " ");
+                  const cleanVal = val === "true" ? "نعم" : val === "false" ? "لا" : val;
+                  return (
+                    <div key={key} className="bg-white rounded-lg p-2 border border-gray-50 flex justify-between items-center text-xs">
+                      <span className="text-gray-450">{label}:</span>
+                      <strong className="text-gray-800 font-semibold">{String(cleanVal)}</strong>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          ))}
+          )}
+
+          {/* متطلبات خاصة / ملاحظات */}
+          <div className="bg-amber-50/50 rounded-xl p-3 border border-amber-100">
+            <div className="text-xs font-semibold text-amber-700 mb-1">متطلبات خاصة / ملاحظات</div>
+            <div className="text-sm text-amber-900 leading-relaxed">{cleanNotes}</div>
+          </div>
         </div>
-        <div className="bg-amber-50 rounded-xl p-3 border border-amber-100">
-          <div className="text-xs font-semibold text-amber-700 mb-1">متطلبات خاصة</div>
-          <div className="text-sm text-amber-800">مقاومة رطوبة عالية - مناسب للحمامات والمطابخ</div>
+      );
+    })(),
+    catalog_match: (() => {
+      const isCustom = order.orderType === "custom" || (order.selections && (order.selections.custom_dimensions === "true" || order.selections.special_colors === "true"));
+      return (
+        <div className="space-y-3 text-right" dir="rtl">
+          <div className="grid grid-cols-1 gap-2">
+            {[
+              { label: "المقاسات ضمن حدود الإنتاج", ok: true },
+              { label: "اللون متوفر في المخزون", ok: true },
+              { label: "الإكسسوارات متوافقة مع السماكة", ok: true },
+              { label: "نوع الطلب", value: isCustom ? "طلب خاص (تفصيل)" : "طلب معياري (جاهز)" },
+            ].map((item, i) => (
+              <div key={i} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2.5">
+                <span className="text-sm text-gray-700">{item.label}</span>
+                {item.ok !== undefined ? (
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700`}>
+                    {item.ok ? "✓ مطابق" : "✗ غير مطابق"}
+                  </span>
+                ) : (
+                  <span className="text-sm font-bold text-gray-900">{item.value}</span>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
-    ),
-    catalog_match: (
-      <div className="space-y-3">
-        <div className="grid grid-cols-1 gap-2">
-          {[
-            { label: "المقاسات ضمن حدود الإنتاج", ok: true },
-            { label: "اللون متوفر في المخزون", ok: true },
-            { label: "الإكسسوارات متوافقة مع السماكة", ok: true },
-            { label: "نوع الطلب", value: "Standard" },
-          ].map((item, i) => (
-            <div key={i} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2.5">
-              <span className="text-sm text-gray-700">{item.label}</span>
-              {item.ok !== undefined ? (
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${item.ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                  {item.ok ? "✓ مطابق" : "✗ غير مطابق"}
-                </span>
-              ) : (
-                <span className="text-sm font-bold text-gray-900">{item.value}</span>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    ),
+      );
+    })(),
     job_order_file: (
-      <div className="space-y-3">
+      <div className="space-y-3 text-right" dir="rtl">
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-gray-50 rounded-xl p-3">
-            <div className="text-xs text-gray-400 mb-1">كود الطلب</div>
-            <div className="font-mono font-bold text-gray-900">JOB-2026-0451</div>
+            <div className="text-xs text-gray-400 mb-1">كود تشغيل الطلب</div>
+            <div className="font-mono font-bold text-gray-900">{`JOB-2026-${String(order.id).padStart(4, "0")}`}</div>
           </div>
           <div className="bg-gray-50 rounded-xl p-3">
             <div className="text-xs text-gray-400 mb-1">تاريخ الإصدار</div>
-            <div className="font-bold text-gray-900">2026-05-02</div>
+            <div className="font-bold text-gray-900">{order.createdAt || "—"}</div>
           </div>
         </div>
         <div className="space-y-2">
@@ -139,86 +171,96 @@ function StagePanel({
         </button>
       </div>
     ),
-    sample_approval: (
-      <div className="space-y-3">
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: "عينة اللون", status: "مُرسَلة", color: "blue" },
-            { label: "قطعة WPC", status: "مُرسَلة", color: "blue" },
-            { label: "عينة الفيلم", status: "في الانتظار", color: "amber" },
-          ].map((s) => (
-            <div key={s.label} className={`rounded-xl p-3 text-center border ${s.color === "blue" ? "bg-blue-50 border-blue-100" : "bg-amber-50 border-amber-100"}`}>
-              <div className="text-xs text-gray-500 mb-1">{s.label}</div>
-              <div className={`text-xs font-bold ${s.color === "blue" ? "text-blue-700" : "text-amber-700"}`}>{s.status}</div>
+    sample_approval: (() => {
+      const sampleRef = order.productId ? `${order.productId.toUpperCase()}-${order.selections?.color_choice || "Default"}` : "WPC-Classic-White";
+      return (
+        <div className="space-y-3 text-right" dir="rtl">
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: "عينة اللون", status: "مُرسَلة", color: "blue" },
+              { label: "قطعة الباب", status: "مُرسَلة", color: "blue" },
+              { label: "عينة الفيلم", status: "جاهز", color: "blue" },
+            ].map((s) => (
+              <div key={s.label} className={`rounded-xl p-3 text-center border bg-blue-50 border-blue-100`}>
+                <div className="text-xs text-gray-500 mb-1">{s.label}</div>
+                <div className={`text-xs font-bold text-blue-700`}>{s.status}</div>
+              </div>
+            ))}
+          </div>
+          <div className="bg-red-50 rounded-xl p-3 border border-red-100">
+            <div className="flex items-center gap-2 text-red-700">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span className="text-xs font-semibold">تنبيه: لا يبدأ الإنتاج قبل اعتماد جميع العينات</span>
             </div>
-          ))}
-        </div>
-        <div className="bg-red-50 rounded-xl p-3 border border-red-100">
-          <div className="flex items-center gap-2 text-red-700">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span className="text-xs font-semibold">تنبيه: لا يبدأ الإنتاج قبل اعتماد جميع العينات</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-gray-50 rounded-xl p-3">
+              <div className="text-xs text-gray-400 mb-1">العينة المرجعية</div>
+              <div className="font-bold text-gray-900">{sampleRef}</div>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3">
+              <div className="text-xs text-gray-400 mb-1">تاريخ الاعتماد المتوقع</div>
+              <div className="font-bold text-gray-900">{order.createdAt || "—"}</div>
+            </div>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button size="sm" className="flex-1 gap-1.5" style={{ background: "oklch(0.55 0.15 140)" }}>
-            <Check className="w-3.5 h-3.5" /> تسجيل الاعتماد
-          </Button>
-          <Button size="sm" variant="outline" className="flex-1 gap-1.5 text-red-600 border-red-200">
-            <X className="w-3.5 h-3.5" /> رفض العينة
-          </Button>
-        </div>
-      </div>
-    ),
+      );
+    })(),
     production_planning: (
-      <div className="space-y-3">
+      <div className="space-y-3 text-right" dir="rtl">
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-gray-50 rounded-xl p-3">
             <div className="text-xs text-gray-400 mb-1">تاريخ بدء الإنتاج</div>
-            <div className="font-bold text-gray-900">2026-05-12</div>
+            <div className="font-bold text-gray-900">{order.createdAt}</div>
           </div>
           <div className="bg-gray-50 rounded-xl p-3">
             <div className="text-xs text-gray-400 mb-1">تاريخ الانتهاء المتوقع</div>
-            <div className="font-bold text-gray-900">2026-05-22</div>
+            <div className="font-bold text-gray-900">{order.expectedDelivery || "—"}</div>
           </div>
           <div className="bg-gray-50 rounded-xl p-3">
             <div className="text-xs text-gray-400 mb-1">خط الإنتاج</div>
-            <div className="font-bold text-gray-900">خط A - WPC</div>
+            <div className="font-bold text-gray-900">{order.productId ? `خط ${order.productId.toUpperCase()}` : "خط A - WPC"}</div>
           </div>
           <div className="bg-gray-50 rounded-xl p-3">
             <div className="text-xs text-gray-400 mb-1">الأولوية في الجدول</div>
-            <div className="font-bold text-amber-600">عاجل</div>
+            <div className={`font-bold ${order.priority === "urgent" ? "text-red-650" : order.priority === "vip" ? "text-purple-650" : "text-gray-750"}`}>
+              {order.priority === "urgent" ? "عاجل" : order.priority === "vip" ? "VIP" : "عادي"}
+            </div>
           </div>
         </div>
       </div>
     ),
-    material_procurement: (
-      <div className="space-y-2">
-        {[
-          { item: "ألواح WPC", qty: "52 لوح", status: "متوفر", ok: true },
-          { item: "أفلام الألوان", qty: "55 م²", status: "متوفر", ok: true },
-          { item: "حواف ABS", qty: "200 م", status: "متوفر", ok: true },
-          { item: "إطارات", qty: "48 مجموعة", status: "طلب مفتوح", ok: false },
-          { item: "إكسسوارات (أقفال+مفصلات)", qty: "48 مجموعة", status: "متوفر", ok: true },
-          { item: "مواد التغليف", qty: "50 طقم", status: "متوفر", ok: true },
-        ].map((m) => (
-          <div key={m.item} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2.5">
-            <div>
-              <div className="text-sm font-medium text-gray-800">{m.item}</div>
-              <div className="text-xs text-gray-400">{m.qty}</div>
+    material_procurement: (() => {
+      const materialLabel = order.productId ? (order.productId.includes("wpc") ? "ألواح WPC" : "ألواح خشب") : "ألواح خشب";
+      return (
+        <div className="space-y-2 text-right" dir="rtl">
+          {[
+            { item: materialLabel, qty: `${order.totalDoors} لوح`, status: "متوفر", ok: true },
+            { item: "أفلام الألوان", qty: "متوفر بالمستودع", status: "متوفر", ok: true },
+            { item: "حواف ABS", qty: "ABS 2mm", status: "متوفر", ok: true },
+            { item: "إطارات الأبواب", qty: `${order.totalDoors} مجموعة`, status: "متوفر", ok: true },
+            { item: "إكسسوارات (أقفال+مفصلات)", qty: `${order.totalDoors} مجموعة`, status: "متوفر", ok: true },
+            { item: "مواد التغليف", qty: "متوفر", status: "متوفر", ok: true },
+          ].map((m) => (
+            <div key={m.item} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2.5">
+              <div>
+                <div className="text-sm font-medium text-gray-800">{m.item}</div>
+                <div className="text-xs text-gray-400">{m.qty}</div>
+              </div>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${m.ok ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                {m.status}
+              </span>
             </div>
-            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${m.ok ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
-              {m.status}
-            </span>
-          </div>
-        ))}
-      </div>
-    ),
+          ))}
+        </div>
+      );
+    })(),
     incoming_qc: (
-      <div className="space-y-3">
+      <div className="space-y-3 text-right" dir="rtl">
         <div className="grid grid-cols-2 gap-3">
           {[
             { label: "اللون", result: "مطابق", ok: true },
-            { label: "السماكة", result: "مطابق (12mm)", ok: true },
+            { label: "السماكة", result: "مطابق", ok: true },
             { label: "الاستقامة", result: "مطابق", ok: true },
             { label: "العيوب البصرية", result: "لا عيوب", ok: true },
           ].map((q) => (
@@ -235,12 +277,12 @@ function StagePanel({
       </div>
     ),
     work_order: (
-      <div className="space-y-3">
+      <div className="space-y-3 text-right" dir="rtl">
         <div className="text-xs font-semibold text-gray-500 mb-2">توجيه الأقسام</div>
         {[
-          { dept: "خط الأبواب", qty: "48 باب", assignee: "أحمد محمد", status: "جارٍ" },
-          { dept: "خط الإطارات", qty: "48 مجموعة إطار", assignee: "خالد علي", status: "جارٍ" },
-          { dept: "قسم الإكسسوارات", qty: "48 مجموعة", assignee: "محمد سالم", status: "معلق" },
+          { dept: "خط الأبواب", qty: `${order.totalDoors} باب`, assignee: "أحمد محمد", status: "جارٍ" },
+          { dept: "خط الإطارات", qty: `${order.totalDoors} مجموعة إطار`, assignee: "خالد علي", status: "جارٍ" },
+          { dept: "قسم الإكسسوارات", qty: `${order.totalDoors} مجموعة`, assignee: "محمد سالم", status: "معلق" },
         ].map((w) => (
           <div key={w.dept} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-3">
             <div>
@@ -255,7 +297,7 @@ function StagePanel({
       </div>
     ),
     final_qc: (
-      <div className="space-y-3">
+      <div className="space-y-3 text-right" dir="rtl">
         <div className="grid grid-cols-2 gap-3">
           {[
             { label: "المقاسات", result: "مطابق", ok: true },
@@ -279,15 +321,15 @@ function StagePanel({
       </div>
     ),
     po_matching: (
-      <div className="space-y-3">
+      <div className="space-y-3 text-right" dir="rtl">
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-gray-50 rounded-xl p-3">
             <div className="text-xs text-gray-400 mb-1">الكمية المطلوبة</div>
-            <div className="text-xl font-bold text-gray-900">48 باب</div>
+            <div className="text-xl font-bold text-gray-900">{order.totalDoors} باب</div>
           </div>
           <div className="bg-gray-50 rounded-xl p-3">
             <div className="text-xs text-gray-400 mb-1">الكمية المنتجة</div>
-            <div className="text-xl font-bold text-green-600">48 باب</div>
+            <div className="text-xl font-bold text-green-600">{order.totalDoors} باب</div>
           </div>
         </div>
         <div className="flex items-center gap-2 bg-green-50 rounded-xl px-3 py-2.5 border border-green-100">
@@ -297,7 +339,7 @@ function StagePanel({
       </div>
     ),
     packing: (
-      <div className="space-y-3">
+      <div className="space-y-3 text-right" dir="rtl">
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-gray-50 rounded-xl p-3">
             <div className="text-xs text-gray-400 mb-1">نوع التغليف</div>
@@ -305,22 +347,20 @@ function StagePanel({
           </div>
           <div className="bg-gray-50 rounded-xl p-3">
             <div className="text-xs text-gray-400 mb-1">طريقة التغليف</div>
-            <div className="font-bold text-gray-900">فردي</div>
+            <div className="font-bold text-gray-900">حماية زوايا كرتون + فيلم</div>
           </div>
         </div>
         <div className="space-y-2">
-          <div className="text-xs font-semibold text-gray-500">بيانات كل باب</div>
+          <div className="text-xs font-semibold text-gray-500">بيانات الأبواب المغلفة</div>
           {[
-            { code: "DR-001", order: "ORD-2026-0451", dir: "يمين", room: "غرفة رئيسية - دور 1" },
-            { code: "DR-002", order: "ORD-2026-0451", dir: "يسار", room: "غرفة نوم - دور 1" },
-            { code: "DR-003", order: "ORD-2026-0451", dir: "يمين", room: "حمام - دور 1" },
+            { code: `DR-${String(order.id).padStart(4, "0")}-1`, order: order.orderNumber, dir: order.selections?.direction || "يمين", room: "باب رئيسي" },
           ].map((d) => (
             <div key={d.code} className="bg-gray-50 rounded-xl px-3 py-2.5 flex items-center justify-between">
               <div>
                 <div className="text-sm font-bold text-gray-800">{d.code}</div>
                 <div className="text-xs text-gray-400">{d.room}</div>
               </div>
-              <div className="text-right">
+              <div className="text-left">
                 <div className="text-xs text-gray-500">{d.dir}</div>
                 <div className="text-xs text-gray-400">{d.order}</div>
               </div>
@@ -330,12 +370,11 @@ function StagePanel({
       </div>
     ),
     delivery_docs: (
-      <div className="space-y-2">
+      <div className="space-y-2 text-right" dir="rtl">
         {[
           { doc: "Packing List", status: "جاهز", ready: true },
           { doc: "Invoice", status: "جاهز", ready: true },
-          { doc: "صور المنتج قبل الشحن", status: "جاهز (12 صورة)", ready: true },
-          { doc: "شهادة الفحص", status: "مطلوب من العميل", ready: false },
+          { doc: "صور المنتج قبل الشحن", status: "جاهز (6 صور)", ready: true },
         ].map((d) => (
           <div key={d.doc} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2.5">
             <div className="flex items-center gap-2">
@@ -354,90 +393,61 @@ function StagePanel({
       </div>
     ),
     delivery: (
-      <div className="space-y-3">
+      <div className="space-y-3 text-right" dir="rtl">
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-gray-50 rounded-xl p-3">
-            <div className="text-xs text-gray-400 mb-1">موعد التحميل</div>
-            <div className="font-bold text-gray-900">2026-05-25 - 9:00 ص</div>
+            <div className="text-xs text-gray-400 mb-1">تاريخ الشحن المتوقع</div>
+            <div className="font-bold text-gray-900">{order.expectedDelivery || "—"}</div>
           </div>
           <div className="bg-gray-50 rounded-xl p-3">
-            <div className="text-xs text-gray-400 mb-1">وسيلة النقل</div>
-            <div className="font-bold text-gray-900">شاحنة مغلقة 10 طن</div>
+            <div className="text-xs text-gray-400 mb-1">العنوان</div>
+            <div className="font-bold text-gray-900">مستودع العميل</div>
           </div>
-        </div>
-        <div className="space-y-2">
-          <button className="w-full flex items-center justify-center gap-2 py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 hover:border-gray-300 transition-colors">
-            <Camera className="w-4 h-4" />
-            رفع صور التحميل
-          </button>
-          <button className="w-full flex items-center justify-center gap-2 py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 hover:border-gray-300 transition-colors">
-            <Upload className="w-4 h-4" />
-            رفع توقيع الاستلام
-          </button>
         </div>
       </div>
     ),
-    accounting_close: (
-      <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-gray-50 rounded-xl p-3">
-            <div className="text-xs text-gray-400 mb-1">قيمة الفاتورة</div>
-            <div className="text-xl font-bold text-gray-900">86,400 ر.س</div>
-          </div>
-          <div className="bg-gray-50 rounded-xl p-3">
-            <div className="text-xs text-gray-400 mb-1">المبلغ المحصّل</div>
-            <div className="text-xl font-bold text-green-600">43,200 ر.س</div>
-          </div>
-        </div>
-        <div className="bg-amber-50 rounded-xl p-3 border border-amber-100">
-          <div className="text-xs font-semibold text-amber-700 mb-1">الدفعة المتبقية</div>
-          <div className="text-lg font-bold text-amber-800">43,200 ر.س (50%)</div>
-          <div className="text-xs text-amber-600 mt-1">تاريخ الاستحقاق: 2026-06-10</div>
-        </div>
-        <Button size="sm" className="w-full gap-1.5" style={{ background: "oklch(0.38 0.06 160)" }}>
-          <Check className="w-3.5 h-3.5" />
-          تأكيد استلام الدفعة وإقفال الطلب
-        </Button>
-      </div>
-    ),
-    post_order_review: (
-      <div className="space-y-3">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bg-gray-50 rounded-xl p-3 text-center">
-            <div className="text-xs text-gray-400 mb-1">زمن التنفيذ</div>
-            <div className="text-xl font-bold text-gray-900">24</div>
-            <div className="text-xs text-gray-400">يوم</div>
-          </div>
-          <div className="bg-gray-50 rounded-xl p-3 text-center">
-            <div className="text-xs text-gray-400 mb-1">الهدف</div>
-            <div className="text-xl font-bold text-green-600">21</div>
-            <div className="text-xs text-gray-400">يوم</div>
-          </div>
-          <div className="bg-gray-50 rounded-xl p-3 text-center">
-            <div className="text-xs text-gray-400 mb-1">الانحراف</div>
-            <div className="text-xl font-bold text-amber-600">+3</div>
-            <div className="text-xs text-gray-400">يوم</div>
-          </div>
-        </div>
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-gray-500">نقاط التحسين</div>
-          {[
-            "تأخر في تأمين الإطارات (3 أيام)",
-            "إعادة فحص عينة اللون مرة واحدة",
-          ].map((note, i) => (
-            <div key={i} className="flex items-start gap-2 bg-amber-50 rounded-xl px-3 py-2.5 border border-amber-100">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-              <span className="text-xs text-amber-700">{note}</span>
+    accounting_close: (() => {
+      const isPaid = order.paymentStatus === "paid";
+      const isPartial = order.paymentStatus === "partial";
+      const total = order.totalValue;
+      const paid = isPaid ? total : isPartial ? total / 2 : 0;
+      const remaining = total - paid;
+      return (
+        <div className="space-y-3 text-right" dir="rtl">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-gray-50 rounded-xl p-3">
+              <div className="text-xs text-gray-400 mb-1">قيمة الفاتورة</div>
+              <div className="text-base font-bold text-gray-900">{total.toLocaleString()} ر.س</div>
             </div>
-          ))}
+            <div className="bg-gray-50 rounded-xl p-3">
+              <div className="text-xs text-gray-400 mb-1">المبلغ المحصّل</div>
+              <div className="text-base font-bold text-green-600">{paid.toLocaleString()} ر.س</div>
+            </div>
+          </div>
+          {remaining > 0 && (
+            <div className="bg-amber-50 rounded-xl p-3 border border-amber-100">
+              <div className="text-xs font-semibold text-amber-700 mb-1">الدفعة المتبقية</div>
+              <div className="text-sm font-bold text-amber-800">{remaining.toLocaleString()} ر.س ({isPartial ? "50%" : "100%"})</div>
+            </div>
+          )}
+          {remaining === 0 && (
+            <div className="bg-green-50 rounded-xl p-3 border border-green-100 text-green-700 text-xs font-semibold text-center">
+              الطلب مسدد بالكامل
+            </div>
+          )}
         </div>
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-gray-500">تقييم العميل</div>
-          <div className="flex items-center gap-1">
-            {[1,2,3,4,5].map((s) => (
-              <Star key={s} className={`w-5 h-5 ${s <= 4 ? "fill-amber-400 text-amber-400" : "text-gray-200"}`} />
-            ))}
-            <span className="text-sm font-bold text-gray-700 mr-2">4.0 / 5</span>
+      );
+    })(),
+    post_order_review: (
+      <div className="space-y-3 text-right" dir="rtl">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-gray-50 rounded-xl p-3 text-center">
+            <div className="text-xs text-gray-400 mb-1">زمن التوريد الفعلي</div>
+            <div className="text-base font-bold text-gray-900">في الوقت المحدد</div>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-3 text-center">
+            <div className="text-xs text-gray-400 mb-1">حالة رضا العميل</div>
+            <div className="text-base font-bold text-green-600">ممتاز</div>
           </div>
         </div>
       </div>
@@ -757,6 +767,7 @@ export default function OrderWorkflowModal({
                         isActive={localOrder.currentStage === s.id}
                         onAdvance={(notes) => handleAdvance(s.id, notes)}
                         onBlock={(reason) => handleBlock(s.id, reason)}
+                        order={localOrder}
                       />
                     ))}
                   </div>
