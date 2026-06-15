@@ -7,7 +7,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 import { db, schema } from "./db.js";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, like } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import { invokeLLM } from "./llm.js";
 import { publicProcedure, adminProcedure, distributorProcedure, router } from "./trpc.js";
@@ -394,10 +394,66 @@ const distributorOrdersRouter = router({
       })
     )
     .mutation(async ({ input }) => {
+      const order = await db.query.distributorOrders.findFirst({
+        where: eq(schema.distributorOrders.id, input.id),
+      });
+      if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "الطلب غير موجود" });
+
       await db
         .update(schema.distributorOrders)
         .set({ status: input.status, updatedAt: Date.now() })
         .where(eq(schema.distributorOrders.id, input.id));
+
+      if (input.status === "confirmed") {
+        let itemsList: any[] = [];
+        try {
+          itemsList = typeof order.items === "string" ? JSON.parse(order.items) : order.items;
+        } catch {
+          itemsList = [];
+        }
+
+        const dist = await db.query.distributors.findFirst({
+          where: eq(schema.distributors.id, Number(order.distributorId)),
+        });
+
+        for (const it of itemsList) {
+          const selectionsObj = it.selections || {};
+          const subSelectionsObj = it.subSelections || {};
+          
+          await db.insert(schema.doorOrders).values({
+            customerName: order.distributorCompany || order.distributorName,
+            customerPhone: dist?.phone || order.distributorId,
+            customerEmail: dist?.email || null,
+            productId: it.doorType || "interior",
+            productName: it.doorTypeEn || it.doorType || "Door",
+            selections: selectionsObj,
+            subSelections: subSelectionsObj,
+            dimensions: {
+              width: it.width || 90,
+              height: it.height || 210,
+              thickness: it.thickness || 4,
+            },
+            basePrice: Math.round(it.unitPrice || 0),
+            totalPrice: Math.round((it.unitPrice || 0) * (it.quantity || 1)),
+            status: "confirmed",
+            workflowStage: "po_review",
+            priority: "normal",
+            totalDoors: it.quantity || 1,
+            paymentStatus: order.paymentStatus === "paid" ? "paid" : order.paymentStatus === "partial" ? "partial" : "unpaid",
+            notes: `DIST_ORDER_ID:${order.id} - ${it.notes || ""}`,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          });
+        }
+      }
+
+      if (input.status === "cancelled") {
+        await db
+          .update(schema.doorOrders)
+          .set({ status: "cancelled", updatedAt: Date.now() })
+          .where(like(schema.doorOrders.notes, `DIST_ORDER_ID:${order.id}%`));
+      }
+
       return { success: true };
     }),
 

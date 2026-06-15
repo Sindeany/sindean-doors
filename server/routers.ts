@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 import { db, schema } from "./db.js";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, like, or, ne } from "drizzle-orm";
 import { router, publicProcedure, adminProcedure } from "./trpc.js";
 import { suppliersRouter } from "./suppliers.router.js";
 import { rfqRouter } from "./rfq.router.js";
@@ -57,6 +57,32 @@ async function notifyOwner(title: string, content: string): Promise<void> {
 // الـ instance المشترك مُعرَّف في trpc.ts
 
 // ── Orders Router ────────────────────────────────────────────────────────────
+function getStatusForStage(stage: string): "confirmed" | "manufacturing" | "shipped" | "delivered" {
+  switch (stage) {
+    case "po_review":
+    case "catalog_match":
+    case "job_order_file":
+    case "sample_approval":
+    case "production_planning":
+      return "confirmed";
+    case "material_procurement":
+    case "incoming_qc":
+    case "work_order":
+    case "final_qc":
+    case "po_matching":
+      return "manufacturing";
+    case "packing":
+    case "delivery_docs":
+      return "shipped";
+    case "delivery":
+    case "accounting_close":
+    case "post_order_review":
+      return "delivered";
+    default:
+      return "confirmed";
+  }
+}
+
 const ordersRouter = router({
   // Create a new door order
   create: publicProcedure
@@ -150,7 +176,7 @@ const ordersRouter = router({
         orderBy: [desc(schema.doorOrders.createdAt)],
         where: input?.status
           ? eq(schema.doorOrders.status, input.status)
-          : undefined,
+          : ne(schema.doorOrders.status, "cancelled"),
       });
       return orders.map((order) => ({
         ...order,
@@ -416,6 +442,48 @@ const ordersRouter = router({
           updatedAt: Date.now(),
         })
         .where(eq(schema.doorOrders.id, input.id));
+
+      // Sync distributor order status if applicable
+      const doorOrder = await db.query.doorOrders.findFirst({
+        where: eq(schema.doorOrders.id, input.id),
+      });
+
+      if (doorOrder && doorOrder.notes && doorOrder.notes.startsWith("DIST_ORDER_ID:")) {
+        const prefix = doorOrder.notes.split(" - ")[0]; // "DIST_ORDER_ID:12"
+        const distOrderIdStr = prefix.replace("DIST_ORDER_ID:", "");
+        const distOrderId = parseInt(distOrderIdStr, 10);
+        if (!isNaN(distOrderId)) {
+          // Fetch all items linked to this distributor order
+          const linkedOrders = await db.query.doorOrders.findMany({
+            where: like(schema.doorOrders.notes, `DIST_ORDER_ID:${distOrderId}%`),
+          });
+
+          if (linkedOrders.length > 0) {
+            const itemStatuses = linkedOrders.map(o => getStatusForStage(o.workflowStage || "po_review"));
+            
+            let parentStatus: "confirmed" | "manufacturing" | "shipped" | "delivered" = "confirmed";
+            const allDelivered = itemStatuses.every(s => s === "delivered");
+            const allShippedOrDelivered = itemStatuses.every(s => s === "shipped" || s === "delivered");
+            const anyMfgOrHigher = itemStatuses.some(s => s === "manufacturing" || s === "shipped" || s === "delivered");
+
+            if (allDelivered) {
+              parentStatus = "delivered";
+            } else if (allShippedOrDelivered) {
+              parentStatus = "shipped";
+            } else if (anyMfgOrHigher) {
+              parentStatus = "manufacturing";
+            } else {
+              parentStatus = "confirmed";
+            }
+
+            await db
+              .update(schema.distributorOrders)
+              .set({ status: parentStatus, updatedAt: Date.now() })
+              .where(eq(schema.distributorOrders.id, distOrderId));
+          }
+        }
+      }
+
       return { success: true };
     }),
 

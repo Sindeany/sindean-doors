@@ -9,7 +9,7 @@ import { z } from "zod/v4";
 import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 import { db, schema } from "./db.js";
-import { eq, and, gt, ne, desc } from "drizzle-orm";
+import { eq, and, gt, ne, desc, like, or } from "drizzle-orm";
 import { publicProcedure, distributorProcedure, router } from "./trpc.js";
 
 const DISTRIBUTOR_COOKIE_OPTIONS = {
@@ -308,17 +308,40 @@ export const distributorsRouter = router({
         limit: input?.limit ?? 50,
       });
 
-      // تحويل items من text إلى JSON بأمان — نفس نمط productOptions.router.ts
-      return orders.map((o) => ({
-        ...o,
-        items: (() => {
-          try {
-            return JSON.parse(o.items);
-          } catch {
-            return [];
-          }
-        })(),
-      }));
+      const orderIds = orders.map(o => o.id);
+      let linkedDoorOrders: any[] = [];
+      if (orderIds.length > 0) {
+        const conditions = orderIds.map(id => like(schema.doorOrders.notes, `DIST_ORDER_ID:${id}%`));
+        linkedDoorOrders = await db.query.doorOrders.findMany({
+          where: or(...conditions),
+        });
+      }
+
+      return orders.map((o) => {
+        let itemsList: any[] = [];
+        try {
+          itemsList = typeof o.items === "string" ? JSON.parse(o.items) : o.items;
+        } catch {
+          itemsList = [];
+        }
+
+        const oDoorOrders = linkedDoorOrders
+          .filter(d => d.notes && d.notes.startsWith(`DIST_ORDER_ID:${o.id}`))
+          .sort((a, b) => a.id - b.id);
+
+        const itemsWithStages = itemsList.map((it, idx) => {
+          const matchedDoorOrder = oDoorOrders[idx];
+          return {
+            ...it,
+            workflowStage: matchedDoorOrder?.workflowStage || null,
+          };
+        });
+
+        return {
+          ...o,
+          items: itemsWithStages,
+        };
+      });
     }),
 
   // ── تحديث الملف الشخصي للموزع ─────────────────────────────────────────────

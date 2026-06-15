@@ -26,6 +26,24 @@ import { useLanguage } from "@/contexts/LanguageContext";
 
 const STATUS_STEPS = ["pending", "confirmed", "manufacturing", "shipped", "delivered"];
 
+const STAGE_LABELS: Record<string, { ar: string; en: string }> = {
+  po_review: { ar: "مراجعة أمر الشراء", en: "PO Review" },
+  catalog_match: { ar: "مطابقة الكتالوج", en: "Catalog Match" },
+  job_order_file: { ar: "ملف الطلب الفني", en: "Job Order File" },
+  sample_approval: { ar: "اعتماد العينة", en: "Sample Approval" },
+  production_planning: { ar: "تخطيط الإنتاج", en: "Production Planning" },
+  material_procurement: { ar: "تأمين المواد الخام", en: "Material Procurement" },
+  incoming_qc: { ar: "فحص المواد الداخلة", en: "Incoming QC" },
+  work_order: { ar: "أمر التشغيل الداخلي", en: "Work Order" },
+  final_qc: { ar: "الفحص النهائي", en: "Final QC" },
+  po_matching: { ar: "مطابقة أمر الشراء", en: "PO Matching" },
+  packing: { ar: "التغليف", en: "Packing" },
+  delivery_docs: { ar: "مستندات التسليم", en: "Delivery Docs" },
+  delivery: { ar: "التسليم والشحن", en: "Delivery" },
+  accounting_close: { ar: "الإغلاق المحاسبي", en: "Accounting Close" },
+  post_order_review: { ar: "تقييم الطلب", en: "Post-Order Review" },
+};
+
 function OrderTracker({ status }: { status: DistributorOrder["status"] }) {
   const { dir } = useLanguage();
   const currentStep = STATUS_STEPS.indexOf(status);
@@ -319,6 +337,25 @@ function OrderCard({ order, onReorder }: { order: DistributorOrder; onReorder: (
                         </div>
                       </div>
 
+                      {/* Workflow Stage */}
+                      {p.workflowStage && (
+                        <div className="flex items-center gap-2 pt-2.5 border-t border-dashed border-gray-100 text-xs">
+                          <span className="text-gray-405">{dir === "rtl" ? "مرحلة الإنتاج الحالية:" : "Current Stage:"}</span>
+                          <span
+                            className="px-2 py-0.5 rounded text-[11px] font-semibold"
+                            style={{
+                              background: "oklch(0.97 0.02 160)",
+                              color: "oklch(0.38 0.06 160)",
+                              border: "1px solid oklch(0.90 0.04 160)"
+                            }}
+                          >
+                            {dir === "rtl"
+                              ? STAGE_LABELS[p.workflowStage]?.ar || p.workflowStage
+                              : STAGE_LABELS[p.workflowStage]?.en || p.workflowStage}
+                          </span>
+                        </div>
+                      )}
+
                       {/* Custom Selections */}
                       {p.selections && Object.keys(p.selections).length > 0 && (
                         <div className="pt-2.5 border-t border-dashed border-gray-100">
@@ -407,6 +444,7 @@ function mapOrderFromDB(o: any): any {
       height: it.height,
       thickness: it.thickness,
       notes: it.notes,
+      workflowStage: it.workflowStage,
     })),
     totalAmount: o.totalAmount,
     status: o.status,

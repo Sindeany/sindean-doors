@@ -1043,7 +1043,7 @@ var pool = mysql.createPool({
 var db = drizzle(pool, { schema: schema_exports, mode: "default" });
 
 // server/routers.ts
-import { eq as eq26, desc as desc22 } from "drizzle-orm";
+import { eq as eq26, desc as desc22, like as like4, ne as ne2 } from "drizzle-orm";
 
 // server/trpc.ts
 import { initTRPC, TRPCError } from "@trpc/server";
@@ -2280,7 +2280,7 @@ var commentsRouter = router({
 // server/productOptions.router.ts
 import { TRPCError as TRPCError5 } from "@trpc/server";
 import { z as z5 } from "zod/v4";
-import { eq as eq6, desc as desc2 } from "drizzle-orm";
+import { eq as eq6, desc as desc2, like } from "drizzle-orm";
 import * as XLSX from "xlsx";
 function generateOrderNumber() {
   const year = (/* @__PURE__ */ new Date()).getFullYear();
@@ -2537,7 +2537,53 @@ var distributorOrdersRouter = router({
       ])
     })
   ).mutation(async ({ input }) => {
+    const order = await db.query.distributorOrders.findFirst({
+      where: eq6(schema_exports.distributorOrders.id, input.id)
+    });
+    if (!order) throw new TRPCError5({ code: "NOT_FOUND", message: "\u0627\u0644\u0637\u0644\u0628 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     await db.update(schema_exports.distributorOrders).set({ status: input.status, updatedAt: Date.now() }).where(eq6(schema_exports.distributorOrders.id, input.id));
+    if (input.status === "confirmed") {
+      let itemsList = [];
+      try {
+        itemsList = typeof order.items === "string" ? JSON.parse(order.items) : order.items;
+      } catch {
+        itemsList = [];
+      }
+      const dist = await db.query.distributors.findFirst({
+        where: eq6(schema_exports.distributors.id, Number(order.distributorId))
+      });
+      for (const it of itemsList) {
+        const selectionsObj = it.selections || {};
+        const subSelectionsObj = it.subSelections || {};
+        await db.insert(schema_exports.doorOrders).values({
+          customerName: order.distributorCompany || order.distributorName,
+          customerPhone: dist?.phone || order.distributorId,
+          customerEmail: dist?.email || null,
+          productId: it.doorType || "interior",
+          productName: it.doorTypeEn || it.doorType || "Door",
+          selections: selectionsObj,
+          subSelections: subSelectionsObj,
+          dimensions: {
+            width: it.width || 90,
+            height: it.height || 210,
+            thickness: it.thickness || 4
+          },
+          basePrice: Math.round(it.unitPrice || 0),
+          totalPrice: Math.round((it.unitPrice || 0) * (it.quantity || 1)),
+          status: "confirmed",
+          workflowStage: "po_review",
+          priority: "normal",
+          totalDoors: it.quantity || 1,
+          paymentStatus: order.paymentStatus === "paid" ? "paid" : order.paymentStatus === "partial" ? "partial" : "unpaid",
+          notes: `DIST_ORDER_ID:${order.id} - ${it.notes || ""}`,
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        });
+      }
+    }
+    if (input.status === "cancelled") {
+      await db.update(schema_exports.doorOrders).set({ status: "cancelled", updatedAt: Date.now() }).where(like(schema_exports.doorOrders.notes, `DIST_ORDER_ID:${order.id}%`));
+    }
     return { success: true };
   }),
   updatePaymentStatus: adminProcedure.input(
@@ -3726,13 +3772,13 @@ var zatcaRouter = router({
       invoiceIds: z7.array(z7.number()).optional()
     }).optional()
   ).mutation(async ({ input }) => {
-    const { and: drAnd, inArray: inArray3, or: or2 } = await import("drizzle-orm");
+    const { and: drAnd, inArray: inArray3, or: or4 } = await import("drizzle-orm");
     let ids;
     if (input?.invoiceIds?.length) {
       ids = input.invoiceIds;
     } else {
       const rows = await db.select({ id: taxInvoices.id }).from(taxInvoices).where(
-        or2(
+        or4(
           eq9(taxInvoices.zatcaStatus, "pending"),
           eq9(taxInvoices.zatcaStatus, "error")
         )
@@ -4531,7 +4577,7 @@ import { TRPCError as TRPCError9 } from "@trpc/server";
 import { z as z12 } from "zod/v4";
 import bcrypt5 from "bcryptjs";
 import { nanoid as nanoid4 } from "nanoid";
-import { eq as eq13, and as and8, ne, desc as desc8 } from "drizzle-orm";
+import { eq as eq13, and as and8, ne, desc as desc8, like as like2, or } from "drizzle-orm";
 var DISTRIBUTOR_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
@@ -4769,16 +4815,34 @@ var distributorsRouter = router({
       orderBy: [desc8(schema_exports.distributorOrders.createdAt)],
       limit: input?.limit ?? 50
     });
-    return orders.map((o) => ({
-      ...o,
-      items: (() => {
-        try {
-          return JSON.parse(o.items);
-        } catch {
-          return [];
-        }
-      })()
-    }));
+    const orderIds = orders.map((o) => o.id);
+    let linkedDoorOrders = [];
+    if (orderIds.length > 0) {
+      const conditions = orderIds.map((id) => like2(schema_exports.doorOrders.notes, `DIST_ORDER_ID:${id}%`));
+      linkedDoorOrders = await db.query.doorOrders.findMany({
+        where: or(...conditions)
+      });
+    }
+    return orders.map((o) => {
+      let itemsList = [];
+      try {
+        itemsList = typeof o.items === "string" ? JSON.parse(o.items) : o.items;
+      } catch {
+        itemsList = [];
+      }
+      const oDoorOrders = linkedDoorOrders.filter((d) => d.notes && d.notes.startsWith(`DIST_ORDER_ID:${o.id}`)).sort((a, b) => a.id - b.id);
+      const itemsWithStages = itemsList.map((it, idx) => {
+        const matchedDoorOrder = oDoorOrders[idx];
+        return {
+          ...it,
+          workflowStage: matchedDoorOrder?.workflowStage || null
+        };
+      });
+      return {
+        ...o,
+        items: itemsWithStages
+      };
+    });
   }),
   // ── تحديث الملف الشخصي للموزع ─────────────────────────────────────────────
   updateProfile: distributorProcedure.input(
@@ -8883,6 +8947,31 @@ async function notifyOwner(title, content) {
   } catch {
   }
 }
+function getStatusForStage(stage) {
+  switch (stage) {
+    case "po_review":
+    case "catalog_match":
+    case "job_order_file":
+    case "sample_approval":
+    case "production_planning":
+      return "confirmed";
+    case "material_procurement":
+    case "incoming_qc":
+    case "work_order":
+    case "final_qc":
+    case "po_matching":
+      return "manufacturing";
+    case "packing":
+    case "delivery_docs":
+      return "shipped";
+    case "delivery":
+    case "accounting_close":
+    case "post_order_review":
+      return "delivered";
+    default:
+      return "confirmed";
+  }
+}
 var ordersRouter = router({
   // Create a new door order
   create: publicProcedure.input(
@@ -8959,7 +9048,7 @@ var ordersRouter = router({
   ).query(async ({ input }) => {
     const orders = await db.query.doorOrders.findMany({
       orderBy: [desc22(schema_exports.doorOrders.createdAt)],
-      where: input?.status ? eq26(schema_exports.doorOrders.status, input.status) : void 0
+      where: input?.status ? eq26(schema_exports.doorOrders.status, input.status) : ne2(schema_exports.doorOrders.status, "cancelled")
     });
     return orders.map((order) => ({
       ...order,
@@ -9171,6 +9260,36 @@ var ordersRouter = router({
       },
       updatedAt: Date.now()
     }).where(eq26(schema_exports.doorOrders.id, input.id));
+    const doorOrder = await db.query.doorOrders.findFirst({
+      where: eq26(schema_exports.doorOrders.id, input.id)
+    });
+    if (doorOrder && doorOrder.notes && doorOrder.notes.startsWith("DIST_ORDER_ID:")) {
+      const prefix = doorOrder.notes.split(" - ")[0];
+      const distOrderIdStr = prefix.replace("DIST_ORDER_ID:", "");
+      const distOrderId = parseInt(distOrderIdStr, 10);
+      if (!isNaN(distOrderId)) {
+        const linkedOrders = await db.query.doorOrders.findMany({
+          where: like4(schema_exports.doorOrders.notes, `DIST_ORDER_ID:${distOrderId}%`)
+        });
+        if (linkedOrders.length > 0) {
+          const itemStatuses = linkedOrders.map((o) => getStatusForStage(o.workflowStage || "po_review"));
+          let parentStatus = "confirmed";
+          const allDelivered = itemStatuses.every((s) => s === "delivered");
+          const allShippedOrDelivered = itemStatuses.every((s) => s === "shipped" || s === "delivered");
+          const anyMfgOrHigher = itemStatuses.some((s) => s === "manufacturing" || s === "shipped" || s === "delivered");
+          if (allDelivered) {
+            parentStatus = "delivered";
+          } else if (allShippedOrDelivered) {
+            parentStatus = "shipped";
+          } else if (anyMfgOrHigher) {
+            parentStatus = "manufacturing";
+          } else {
+            parentStatus = "confirmed";
+          }
+          await db.update(schema_exports.distributorOrders).set({ status: parentStatus, updatedAt: Date.now() }).where(eq26(schema_exports.distributorOrders.id, distOrderId));
+        }
+      }
+    }
     return { success: true };
   }),
   // Update payment status (admin only)
