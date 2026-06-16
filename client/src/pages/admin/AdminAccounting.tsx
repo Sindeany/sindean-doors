@@ -531,7 +531,7 @@ function AccountsTab() {
           <span>{accounts.length} حساب مُسجَّل</span>
         </div>
         <div className="flex gap-2">
-          {accounts.length === 0 && (
+          {accounts.length === 0 && import.meta.env.DEV && (
             <Button
               variant="outline"
               size="sm"

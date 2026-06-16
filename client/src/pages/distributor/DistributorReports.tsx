@@ -3,7 +3,7 @@
 // Design: Architectural Luxury | Detailed analytics & charts
 // ============================================================
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useDistributorAuth } from "@/contexts/DistributorAuthContext";
 import DistributorLayout from "@/components/distributor/DistributorLayout";
@@ -25,7 +25,7 @@ import {
   LineChart,
   Line,
 } from "recharts";
-import { Download, TrendingUp, TrendingDown, ArrowUpRight } from "lucide-react";
+import { Download, TrendingUp, TrendingDown, ArrowUpRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -40,22 +40,31 @@ const COLORS = [
 const periodOptions = ["آخر 3 أشهر", "آخر 6 أشهر", "هذا العام", "العام الماضي"];
 
 export default function DistributorReports() {
-  const { distributor } = useDistributorAuth();
+  const { distributor, isLoading: authLoading } = useDistributorAuth();
   const [, navigate] = useLocation();
   const [period, setPeriod] = useState("آخر 6 أشهر");
 
+  useEffect(() => {
+    if (!authLoading && !distributor) {
+      navigate("/distributor");
+    }
+  }, [distributor, authLoading, navigate]);
+
   const { data: stats, isLoading, isError } = trpc.distributors.myStats.useQuery(undefined, { retry: false, enabled: !!distributor });
 
-  if (!distributor) {
-    navigate("/distributor");
-    return null;
+  if (authLoading || !distributor) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-oak" />
+      </div>
+    );
   }
 
   if (isLoading) {
     return (
       <DistributorLayout title="التقارير والتحليلات" subtitle="تحليل مفصل لأداء مبيعاتك">
-        <div className="flex items-center justify-center py-20 text-gray-500 font-medium">
-          جارٍ التحميل...
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-8 h-8 animate-spin text-oak" />
         </div>
       </DistributorLayout>
     );

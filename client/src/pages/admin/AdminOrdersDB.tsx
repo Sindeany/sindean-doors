@@ -13,6 +13,73 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+// ── Translation Config ────────────────────────────────────────────────────────
+export const KEY_TRANSLATIONS: Record<string, string> = {
+  material: "نوع الباب",
+  color_choice: "اللون",
+  style: "التصميم",
+  lock: "القفل",
+  hinge: "المفصلات",
+  handle: "المقبض",
+  door_closer: "رداد إغلاق",
+  door_stopper: "مصد الباب",
+  smoke_seal: "مانع الدخان",
+  delivery_method: "طريقة الاستلام",
+  install_choice: "التركيب",
+  measurement: "رفع المقاسات",
+  sales_consultant: "استشاري المبيعات",
+  special_notes: "ملاحظات خاصة",
+  door_leaf_height: "طول الدرفة",
+  opening_height: "طول الفتحة الإنشائية",
+  width: "العرض",
+  wall_thickness: "سمك الجدار",
+  frame_width: "عرض البرواز",
+  frame_height: "طول البرواز",
+  molding_side: "جهة التكسية",
+  style_molding_side: "جهة التكسية",
+  side_width: "عرض التكسية الجانبية",
+  style_side_width: "عرض التكسية الجانبية",
+  special_file: "ملف التصميم الخاص",
+  style_special_file: "ملف التصميم الخاص",
+};
+
+export const VALUE_TRANSLATIONS: Record<string, string> = {
+  // Door types / styles
+  flat: "فلات (مسطح)",
+  top_molding: "مع تكسيات (فوق الباب)",
+  hidden: "باب مخفي",
+  side_molding: "تكسيات جانبية",
+  cnc: "مع حفر CNC",
+  sliding: "باب سحاب",
+  special: "طلبات خاصة",
+  
+  // Colors
+  white: "أبيض",
+  beige: "بيج",
+  light_oak: "بلوط فاتح",
+  dark_walnut: "جوز داكن",
+  charcoal: "فحمي",
+  grey: "رمادي",
+  mahogany: "ماهوجني",
+  black: "أسود",
+  custom: "لون مخصص",
+
+  // Sub-options / other values
+  one_side: "جانب واحد",
+  two_sides: "جانبين",
+  true: "نعم",
+  false: "لا",
+};
+
+export const translateValue = (val: unknown): string => {
+  if (val === undefined || val === null || val === "") return "—";
+  const str = String(val);
+  return str
+    .split(",")
+    .map(v => VALUE_TRANSLATIONS[v.trim()] || v.trim())
+    .join("، ");
+};
+
 // ── Status Config ────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
   new:           { label: "طلب جديد",       color: "text-blue-700",  bg: "bg-blue-50 border-blue-200",   icon: <Package className="w-3.5 h-3.5" /> },
@@ -81,7 +148,7 @@ function CreateInvoiceFromOrderModal({
     ? " - " + Object.entries(dims).map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}سم`).join(", ")
     : "";
   const selsText = sels && Object.keys(sels).length > 0
-    ? " - " + Object.values(sels).filter(Boolean).join(", ")
+    ? " - " + Object.entries(sels).filter(([_, v]) => Boolean(v)).map(([k, v]) => `${KEY_TRANSLATIONS[k] || k}: ${translateValue(v)}`).join(", ")
     : "";
   const description = `${order.productName}${dimsText}${selsText}`;
 
@@ -361,8 +428,8 @@ function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => voi
               <div className="grid grid-cols-2 gap-2 text-sm">
                 {Object.entries(sels).map(([k, v]) => (
                   <div key={k}>
-                    <p className="text-gray-400 text-xs">{k.replace(/_/g, " ")}</p>
-                    <p className="font-medium text-gray-800">{String(v)}</p>
+                    <p className="text-gray-400 text-xs">{KEY_TRANSLATIONS[k] || k.replace(/_/g, " ")}</p>
+                    <p className="font-medium text-gray-800">{translateValue(v)}</p>
                   </div>
                 ))}
               </div>

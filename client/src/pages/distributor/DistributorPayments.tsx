@@ -1,7 +1,6 @@
-// ============================================================
-// Distributor Payments Page — عرض دفعات الموزّع (قراءة فقط)
-// Sindian Doors - Distributor Portal
-// ============================================================
+import { useEffect } from "react";
+import { useLocation } from "wouter";
+import { useDistributorAuth } from "@/contexts/DistributorAuthContext";
 import DistributorLayout from "@/components/distributor/DistributorLayout";
 import { trpc } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -24,10 +23,27 @@ const STATUS_LABELS: Record<string, { ar: string; en: string; color: string }> =
 export default function DistributorPayments() {
   const { dir } = useLanguage();
   const isRtl = dir === "rtl";
+  const { distributor, isLoading: authLoading } = useDistributorAuth();
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (!authLoading && !distributor) {
+      navigate("/distributor");
+    }
+  }, [distributor, authLoading, navigate]);
 
   const { data: payments, isLoading, isError } = trpc.payments.myPayments.useQuery(undefined, {
     retry: false,
+    enabled: !!distributor,
   });
+
+  if (authLoading || !distributor) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-oak" />
+      </div>
+    );
+  }
 
   const tr = (o: { ar: string; en: string }) => (isRtl ? o.ar : o.en);
 

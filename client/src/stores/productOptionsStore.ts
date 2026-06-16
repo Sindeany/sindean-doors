@@ -8,6 +8,7 @@
 
 export type OptionDisplayType =
   | "radio_cards"   // بطاقات اختيار (نوع الباب)
+  | "checkbox_cards" // بطاقات اختيار متعدد
   | "color_swatches" // ألوان
   | "chips"         // شرائح نصية
   | "checkbox_list" // قائمة مربعات
@@ -164,7 +165,7 @@ const DEFAULT_SECTIONS: Section[] = [
         sectionId: "door_shape",
         label: "تصميم الباب",
         labelEn: "Door Design",
-        type: "radio_cards",
+        type: "checkbox_cards",
         required: true,
         enabled: true,
         order: 1,
@@ -612,7 +613,7 @@ function mergeWithDefaults(saved: Section[]): Section[] {
       }));
       // Add custom values that don't exist in defaults
       const extraValues = sg.values.filter((v) => !dg.values.find((dv) => dv.id === v.id));
-      return { ...dg, ...sg, values: [...mergedValues, ...extraValues] };
+      return { ...dg, ...sg, type: dg.type, values: [...mergedValues, ...extraValues] };
     });
     // Add custom groups not in defaults
     const extraGroups = sv.groups.filter((g) => !def.groups.find((dg) => dg.id === g.id));

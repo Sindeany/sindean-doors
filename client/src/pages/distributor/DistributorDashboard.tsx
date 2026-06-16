@@ -4,7 +4,7 @@
 // Batch 4-b: KPI cards + charts + statusSummary ← myStats (real data)
 // ============================================================
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { useDistributorAuth } from "@/contexts/DistributorAuthContext";
@@ -26,7 +26,7 @@ import {
 import {
   TrendingUp, ShoppingBag, DollarSign, Package,
   ArrowUpRight, Clock, Truck, CheckCircle2, AlertCircle, ChevronLeft,
-  Plus, FileSpreadsheet, FolderOpen, BookOpen,
+  Plus, FileSpreadsheet, FolderOpen, BookOpen, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -53,12 +53,18 @@ function mapOrderFromDB(o: any): DistributorOrder {
 }
 
 export default function DistributorDashboard() {
-  const { distributor, isLoading } = useDistributorAuth();
+  const { distributor, isLoading: authLoading } = useDistributorAuth();
   const [, navigate] = useLocation();
   const { dir } = useLanguage();
   const [showNewOrder, setShowNewOrder] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [showProjectFiles, setShowProjectFiles] = useState(false);
+
+  useEffect(() => {
+    if (!authLoading && !distributor) {
+      navigate("/distributor");
+    }
+  }, [distributor, authLoading, navigate]);
 
   // ── Batch 4-b: إحصائيات حقيقية من myStats ──────────────────────────────
   const { data: stats, isLoading: statsLoading, isError: statsError } =
@@ -67,10 +73,12 @@ export default function DistributorDashboard() {
   // ── Batch 5-b: جلب طلبات حقيقية من myOrders ────────────────────────────
   const { data: rawOrders } = trpc.distributors.myOrders.useQuery(undefined, { retry: false, enabled: !!distributor });
 
-  if (isLoading) return null;
-  if (!distributor) {
-    navigate("/distributor");
-    return null;
+  if (authLoading || !distributor) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-oak animate-infinite" />
+      </div>
+    );
   }
 
   const tier = tierConfig[distributor.tier];

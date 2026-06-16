@@ -83,16 +83,25 @@ function calcPriceAdj(
       const sel = selections[grp.id];
       if (grp.type === "toggle" && sel === true) {
         total += grp.priceAdj ?? 0;
-      } else if (typeof sel === "string") {
-        const val = grp.values.find(v => v.id === sel);
-        if (val) total += val.priceAdj ?? 0;
-        // Sub-options price
-        if (val?.hasSubOptions && val.subOptions) {
-          for (const sub of val.subOptions) {
-            const subSel = subSelections[grp.id]?.[sub.id];
-            if (sub.values && typeof subSel === "string") {
-              const sv = sub.values.find(v => v.id === subSel);
-              if (sv) total += sv.priceAdj ?? 0;
+      } else if (typeof sel === "string" || Array.isArray(sel)) {
+        const selectedIds = Array.isArray(sel)
+          ? sel
+          : typeof sel === "string"
+          ? sel.split(",").filter(Boolean)
+          : [];
+        for (const selectedId of selectedIds) {
+          const val = grp.values.find(v => v.id === selectedId);
+          if (val) {
+            total += val.priceAdj ?? 0;
+            // Sub-options price
+            if (val.hasSubOptions && val.subOptions) {
+              for (const sub of val.subOptions) {
+                const subSel = subSelections[grp.id]?.[sub.id];
+                if (sub.values && typeof subSel === "string") {
+                  const sv = sub.values.find(v => v.id === subSel);
+                  if (sv) total += sv.priceAdj ?? 0;
+                }
+              }
             }
           }
         }
@@ -197,7 +206,7 @@ function GroupRenderer({
   group: OptionGroup;
   value: string | boolean | number | string[] | undefined;
   subValues: { [subId: string]: string | number | string[] } | undefined;
-  onChange: (v: string | boolean | number) => void;
+  onChange: (v: string | boolean | number | string[]) => void;
   onSubChange: (subId: string, v: string | number) => void;
   error?: boolean;
 }) {
@@ -214,6 +223,85 @@ function GroupRenderer({
           </p>
         )}
         <div className="flex-1 h-px bg-gray-200" />
+      </div>
+    );
+  }
+
+  // ── checkbox_cards ──────────────────────────────────────────
+  if (group.type === "checkbox_cards") {
+    const selectedList = Array.isArray(value)
+      ? value
+      : typeof value === "string"
+      ? value.split(",").filter(Boolean)
+      : [];
+
+    const handleToggle = (id: string) => {
+      let newList: string[];
+      if (selectedList.includes(id)) {
+        newList = selectedList.filter(x => x !== id);
+      } else {
+        newList = [...selectedList, id];
+      }
+      onChange(newList);
+    };
+
+    return (
+      <div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {enabledValues.map(v => {
+            const selected = selectedList.includes(v.id);
+            return (
+              <motion.button
+                key={v.id}
+                type="button"
+                whileTap={{ scale: 0.97 }}
+                onClick={() => handleToggle(v.id)}
+                className={`relative p-3 rounded-xl border-2 text-right transition-all ${
+                  selected
+                    ? "border-oak bg-oak/5 shadow-sm"
+                    : "border-gray-200 bg-white hover:border-oak/40"
+                }`}
+              >
+                <span className={`absolute top-2 left-2 w-5 h-5 rounded-md flex items-center justify-center border transition-all ${
+                  selected ? "bg-oak border-oak" : "border-gray-300 bg-white"
+                }`}>
+                  {selected && <Check className="w-3 h-3 text-white" />}
+                </span>
+                <p className="font-semibold text-sm text-gray-800 pr-5">{v.label}</p>
+                {v.description && (
+                  <p className="text-xs text-gray-500 mt-0.5 leading-relaxed pr-5">
+                    {v.description}
+                  </p>
+                )}
+                {v.priceAdj !== undefined && v.priceAdj !== 0 && (
+                  <p
+                    className={`text-xs font-bold mt-1 pr-5 ${v.priceAdj > 0 ? "text-copper" : "text-green-600"}`}
+                  >
+                    {v.priceAdj > 0 ? `+${v.priceAdj}` : v.priceAdj} ر.س
+                  </p>
+                )}
+                {/* Sub-options when selected */}
+                {selected && v.hasSubOptions && v.subOptions && (
+                  <div onClick={e => e.stopPropagation()} className="mt-2 text-right">
+                    {v.subOptions.map(sub => (
+                      <SubOptionInput
+                        key={sub.id}
+                        sub={sub}
+                        value={subValues?.[sub.id]}
+                        onChange={sv => onSubChange(sub.id, sv)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </motion.button>
+            );
+          })}
+        </div>
+        {error && (
+          <p className="text-red-500 text-xs mt-2 flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" /> هذا الحقل مطلوب
+          </p>
+        )}
       </div>
     );
   }
@@ -689,7 +777,7 @@ function SectionStep({
   selections: SelectionMap;
   subSelections: SubSelectionMap;
   errors: Set<string>;
-  onSelect: (groupId: string, value: string | boolean | number) => void;
+  onSelect: (groupId: string, value: string | boolean | number | string[]) => void;
   onSubSelect: (groupId: string, subId: string, value: string | number) => void;
 }) {
   // استخراج قيم المقاسات الحالية لعرضها في الرسم التوضيحي
@@ -842,9 +930,15 @@ function SummaryStep({
                     displayValue =
                       String(sel).slice(0, 60) +
                       (String(sel).length > 60 ? "..." : "");
+                  } else if (Array.isArray(sel)) {
+                    displayValue = sel.map(id => grp.values.find(v => v.id === id)?.label ?? id).join("، ");
                   } else if (typeof sel === "string") {
-                    const val = grp.values.find(v => v.id === sel);
-                    displayValue = val?.label ?? sel;
+                    if (grp.type === "checkbox_cards" || grp.type === "checkbox_list") {
+                      displayValue = sel.split(",").map(id => grp.values.find(v => v.id === id)?.label ?? id).join("، ");
+                    } else {
+                      const val = grp.values.find(v => v.id === sel);
+                      displayValue = val?.label ?? sel;
+                    }
                   }
                   if (!displayValue) return null;
                   return (
@@ -982,7 +1076,7 @@ export default function DoorOrderWizard({
   const progress = (currentStep / (allSteps.length - 1)) * 100;
 
   const handleSelect = useCallback(
-    (groupId: string, value: string | boolean | number) => {
+    (groupId: string, value: string | boolean | number | string[]) => {
       setSelections(prev => ({ ...prev, [groupId]: value }));
       setErrors(prev => {
         const n = new Set(prev);
@@ -1014,7 +1108,7 @@ export default function DoorOrderWizard({
       if (grp.type === "section_header") continue; // section headers have no input
       if (grp.type === "number_input") {
         if (!sel || Number(sel) <= 0) newErrors.add(grp.id);
-      } else if (!sel || sel === "") {
+      } else if (!sel || sel === "" || (Array.isArray(sel) && sel.length === 0)) {
         newErrors.add(grp.id);
       }
     }

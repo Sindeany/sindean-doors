@@ -428,6 +428,7 @@ function SectionCard({ section }: { section: Section }) {
             >
               <option value="chips">chips</option>
               <option value="radio_cards">radio_cards</option>
+              <option value="checkbox_cards">checkbox_cards</option>
               <option value="color_swatches">color_swatches</option>
               <option value="toggle">toggle</option>
               <option value="number_input">number_input</option>

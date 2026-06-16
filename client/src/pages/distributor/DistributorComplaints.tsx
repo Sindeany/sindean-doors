@@ -3,7 +3,8 @@
 // Sindian Doors - Distributor Portal
 // Design: Architectural Luxury | Trust-building complaint center
 // ============================================================
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle, CheckCircle2, Clock, XCircle, Plus,
@@ -1022,9 +1023,27 @@ function ComplaintDetailModal({
 export default function DistributorComplaints() {
   const { dir } = useLanguage();
   const isRtl = dir === "rtl";
-  const { distributor } = useDistributorAuth();
+  const { distributor, isLoading: authLoading } = useDistributorAuth();
+  const [, navigate] = useLocation();
   const utils = trpc.useUtils();
-  const ordersQuery = trpc.distributors.myOrders.useQuery();
+
+  useEffect(() => {
+    if (!authLoading && !distributor) {
+      navigate("/distributor");
+    }
+  }, [distributor, authLoading, navigate]);
+
+  const ordersQuery = trpc.distributors.myOrders.useQuery(undefined, {
+    enabled: !!distributor,
+  });
+
+  if (authLoading || !distributor) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-oak" />
+      </div>
+    );
+  }
   const wizardOrders = (ordersQuery.data || []).map((o: any) => ({
     id: String(o.id),
     status: o.status,

@@ -2,7 +2,8 @@
 // DistributorCatalogue - Interactive Product Catalogue
 // Sindian Doors - Distributor Portal
 // ============================================================
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, Filter, X, ChevronDown, Eye, ShoppingCart,
@@ -284,7 +285,14 @@ function CatalogueCard({ item, isRtl, onOrder }: { item: CatalogueItem; isRtl: b
 export default function DistributorCatalogue() {
   const { dir } = useLanguage();
   const isRtl = dir === "rtl";
-  const { distributor } = useDistributorAuth();
+  const { distributor, isLoading: authLoading } = useDistributorAuth();
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (!authLoading && !distributor) {
+      navigate("/distributor");
+    }
+  }, [distributor, authLoading, navigate]);
 
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
@@ -294,7 +302,16 @@ export default function DistributorCatalogue() {
   // ── جلب المنتجات الحقيقية من قاعدة البيانات ────────────────
   const { data: dbProducts, isLoading, isError } = trpc.products.list.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
+    enabled: !!distributor,
   });
+
+  if (authLoading || !distributor) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-oak" />
+      </div>
+    );
+  }
 
   const discountRate = distributor ? distributor.discount / 100 : 0;
 

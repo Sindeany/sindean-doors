@@ -3,7 +3,7 @@
 // Design: Architectural Luxury | Full order management with tracking
 // ============================================================
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useDistributorAuth } from "@/contexts/DistributorAuthContext";
 import DistributorLayout from "@/components/distributor/DistributorLayout";
@@ -23,6 +23,43 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
+
+export const VALUE_TRANSLATIONS: Record<string, string> = {
+  // Door types / styles
+  flat: "فلات (مسطح)",
+  top_molding: "مع تكسيات (فوق الباب)",
+  hidden: "باب مخفي",
+  side_molding: "تكسيات جانبية",
+  cnc: "مع حفر CNC",
+  sliding: "باب سحاب",
+  special: "طلبات خاصة",
+  
+  // Colors
+  white: "أبيض",
+  beige: "بيج",
+  light_oak: "بلوط فاتح",
+  dark_walnut: "جوز داكن",
+  charcoal: "فحمي",
+  grey: "رمادي",
+  mahogany: "ماهوجني",
+  black: "أسود",
+  custom: "لون مخصص",
+
+  // Sub-options / other values
+  one_side: "جانب واحد",
+  two_sides: "جانبين",
+  true: "نعم",
+  false: "لا",
+};
+
+export const translateValue = (val: unknown): string => {
+  if (val === undefined || val === null || val === "") return "—";
+  const str = String(val);
+  return str
+    .split(",")
+    .map(v => VALUE_TRANSLATIONS[v.trim()] || v.trim())
+    .join("، ");
+};
 
 const STATUS_STEPS = ["pending", "confirmed", "manufacturing", "shipped", "delivered"];
 
@@ -364,10 +401,10 @@ function OrderCard({ order, onReorder }: { order: DistributorOrder; onReorder: (
                             {Object.entries(p.selections).map(([key, val]) => {
                               if (["width", "door_leaf_height", "wall_thickness", "material", "color_choice"].includes(key)) return null;
                               const label = KEY_TRANSLATIONS[key] || key.replace(/_/g, " ");
-                              const cleanVal = val === "true" ? "نعم" : val === "false" ? "لا" : val;
+                              const cleanVal = translateValue(val);
                               return (
                                 <span key={key} className="bg-gray-50 text-[10px] text-gray-650 px-2 py-0.5 rounded border border-gray-150">
-                                  {label}: <strong className="text-gray-805">{String(cleanVal)}</strong>
+                                  {label}: <strong className="text-gray-805">{cleanVal}</strong>
                                 </span>
                               );
                             })}
@@ -456,13 +493,20 @@ function mapOrderFromDB(o: any): any {
 }
 
 export default function DistributorOrders() {
-  const { distributor } = useDistributorAuth();
+  const { distributor, isLoading: authLoading } = useDistributorAuth();
   const [, navigate] = useLocation();
+  const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showNewOrder, setShowNewOrder] = useState(false);
   const [reorderData, setReorderData] = useState<DistributorOrder | null>(null);
   const { dir } = useLanguage();
+
+  useEffect(() => {
+    if (!authLoading && !distributor) {
+      navigate("/distributor");
+    }
+  }, [distributor, authLoading, navigate]);
 
   const { data: rawOrders, isLoading, isError } = trpc.distributors.myOrders.useQuery(undefined, {
     retry: false,
@@ -474,9 +518,12 @@ export default function DistributorOrders() {
     setShowNewOrder(true);
   };
 
-  if (!distributor) {
-    navigate("/distributor");
-    return null;
+  if (authLoading || !distributor) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-oak" />
+      </div>
+    );
   }
 
   if (isLoading) {
@@ -605,6 +652,9 @@ export default function DistributorOrders() {
       <NewOrderWizard
         isOpen={showNewOrder}
         onClose={() => { setShowNewOrder(false); setReorderData(null); }}
+        onSuccess={() => {
+          utils.distributors.myOrders.invalidate();
+        }}
         prefillItems={reorderData ? reorderData.products.map((p) => ({
           id: Math.random().toString(36).slice(2),
           doorType: "باب داخلي",

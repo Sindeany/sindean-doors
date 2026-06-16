@@ -348,11 +348,7 @@ export default function AdminInventory() {
             <Button variant="outline" size="sm" className="gap-1.5" onClick={() => refetch()}>
               <RefreshCw className="w-4 h-4" /> تحديث
             </Button>
-            {items.length === 0 && !isLoading && (
-              <Button variant="outline" size="sm" className="gap-1.5 text-amber-700 border-amber-300" onClick={() => seedMutation.mutate()}>
-                <Download className="w-4 h-4" /> تحميل البيانات التجريبية
-              </Button>
-            )}
+            {/* Seed button deleted for production */}
             <Button
               size="sm"
               className="gap-1.5 bg-green-700 hover:bg-green-800 text-white"

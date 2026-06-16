@@ -468,16 +468,7 @@ export default function AdminDecisionLog() {
           <div className="flex flex-col items-center justify-center py-24 gap-4">
             <AlertCircle className="w-12 h-12 opacity-20 text-gray-400" />
             <p className="text-gray-400 text-sm">لا توجد سجلات قرارات بعد</p>
-            <button
-              onClick={() => seedMutation.mutate()}
-              disabled={seedMutation.isPending}
-              className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
-              style={{ background: "oklch(0.38 0.06 160)" }}
-            >
-              {seedMutation.isPending
-                ? "جارٍ الإضافة..."
-                : "إضافة بيانات تجريبية"}
-            </button>
+            {/* Seed button deleted for production */}
           </div>
         )}
 

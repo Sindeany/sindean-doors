@@ -53,7 +53,6 @@ interface NavItem {
   labelZh: string;
   icon: React.ReactNode;
   path: string;
-  badge?: number;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -72,7 +71,6 @@ const NAV_ITEMS: NavItem[] = [
     labelZh: "经销商",
     icon: <Users className="w-5 h-5" />,
     path: "/admin/distributors",
-    badge: 3,
   },
   {
     id: "distributor-orders",
@@ -97,7 +95,6 @@ const NAV_ITEMS: NavItem[] = [
     labelZh: "工作流程",
     icon: <GitBranch className="w-5 h-5" />,
     path: "/admin/workflow",
-    badge: 7,
   },
   {
     id: "work-orders",
@@ -106,7 +103,6 @@ const NAV_ITEMS: NavItem[] = [
     labelZh: "生产工单",
     icon: <Wrench className="w-5 h-5" />,
     path: "/admin/work-orders",
-    badge: 4,
   },
   {
     id: "production",
@@ -139,7 +135,6 @@ const NAV_ITEMS: NavItem[] = [
     labelZh: "质量检验",
     icon: <ShieldCheck className="w-5 h-5" />,
     path: "/admin/qc",
-    badge: 2,
   },
   {
     id: "packing",
@@ -148,7 +143,6 @@ const NAV_ITEMS: NavItem[] = [
     labelZh: "包装与交付",
     icon: <Box className="w-5 h-5" />,
     path: "/admin/packing",
-    badge: 3,
   },
   {
     id: "post-review",
@@ -165,7 +159,6 @@ const NAV_ITEMS: NavItem[] = [
     labelZh: "投诉",
     icon: <AlertCircle className="w-5 h-5" />,
     path: "/admin/complaints",
-    badge: 5,
   },
   {
     id: "products",
@@ -319,6 +312,17 @@ export default function AdminLayout({
     { refetchInterval: 30000, enabled: isAdminLoggedIn } // تحديث كل 30 ثانية
   );
   const newOrdersCount = newOrders?.length ?? 0;
+
+  const { data: kpis } = trpc.orders.kpis.useQuery(undefined, {
+    refetchInterval: 30000,
+    enabled: isAdminLoggedIn,
+  });
+
+  const { data: stats } = trpc.orders.stats.useQuery(undefined, {
+    refetchInterval: 30000,
+    enabled: isAdminLoggedIn,
+  });
+
   const isRtl = dir === "rtl";
 
   // While verifying the session cookie, render nothing to avoid flash-redirect
@@ -361,8 +365,20 @@ export default function AdminLayout({
         ? "System Admin"
         : "مدير النظام";
 
-  const SidebarContent = () => (
-    <div className="flex flex-col h-full" dir={dir}>
+  const SidebarContent = () => {
+    const getBadgeCount = (itemId: string): number => {
+      if (itemId === "orders") return newOrdersCount;
+      if (itemId === "distributors") return kpis?.pendingDistributors ?? 0;
+      if (itemId === "workflow") return (stats?.statusCounts?.new ?? 0) + (stats?.statusCounts?.reviewing ?? 0);
+      if (itemId === "work-orders") return kpis?.inProductionWorkOrders ?? 0;
+      if (itemId === "qc") return kpis?.pendingQc ?? 0;
+      if (itemId === "packing") return kpis?.pendingPacking ?? 0;
+      if (itemId === "complaints") return kpis?.openComplaints ?? 0;
+      return 0;
+    };
+
+    return (
+      <div className="flex flex-col h-full" dir={dir}>
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10">
         <div
@@ -424,25 +440,23 @@ export default function AdminLayout({
                   {getNavLabel(item, lang)}
                 </span>
               )}
-              {!collapsed &&
-                (item.id === "orders" ? newOrdersCount > 0 : item.badge) && (
-                  <span
-                    className="text-xs font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                    style={{
-                      background: "oklch(0.68 0.10 60)",
-                      color: "oklch(0.15 0.03 160)",
-                    }}
-                  >
-                    {item.id === "orders" ? newOrdersCount : item.badge}
-                  </span>
-                )}
-              {collapsed &&
-                (item.id === "orders" ? newOrdersCount > 0 : item.badge) && (
-                  <span
-                    className="absolute top-1.5 end-1.5 w-2 h-2 rounded-full"
-                    style={{ background: "oklch(0.68 0.10 60)" }}
-                  />
-                )}
+              {!collapsed && getBadgeCount(item.id) > 0 && (
+                <span
+                  className="text-xs font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                  style={{
+                    background: "oklch(0.68 0.10 60)",
+                    color: "oklch(0.15 0.03 160)",
+                  }}
+                >
+                  {getBadgeCount(item.id)}
+                </span>
+              )}
+              {collapsed && getBadgeCount(item.id) > 0 && (
+                <span
+                  className="absolute top-1.5 end-1.5 w-2 h-2 rounded-full"
+                  style={{ background: "oklch(0.68 0.10 60)" }}
+                />
+              )}
             </Link>
           );
         })}
@@ -492,6 +506,7 @@ export default function AdminLayout({
       </div>
     </div>
   );
+  };
 
   return (
     <div

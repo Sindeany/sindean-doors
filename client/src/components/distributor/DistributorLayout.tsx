@@ -276,28 +276,36 @@ export default function DistributorLayout({ children, title, subtitle }: Distrib
             {/* Notifications */}
             <button
               className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
-              onClick={() => toast.info(dir === "rtl" ? "لديك 3 إشعارات جديدة" : "You have 3 new notifications")}
+              onClick={() => toast.info(dir === "rtl" ? "لا توجد إشعارات جديدة حالياً" : "No new notifications currently")}
             >
               <Bell className="w-5 h-5" style={{ color: "oklch(0.45 0.04 160)" }} />
-              <span
-                className="absolute top-1 right-1 w-2 h-2 rounded-full"
-                style={{ background: "oklch(0.68 0.10 60)" }}
-              />
             </button>
 
             {/* Credit indicator */}
-            <button
-              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm"
-              style={{
-                background: "oklch(0.96 0.01 160)",
-                color: "oklch(0.38 0.06 160)",
-                fontFamily: "IBM Plex Sans Arabic, sans-serif",
-              }}
-              onClick={() => toast.info(dir === "rtl" ? "الائتمان المتاح: 312,500 ر.س" : "Available Credit: SAR 312,500")}
-            >
-              <CreditCard className="w-4 h-4" />
-              <span>{dir === "rtl" ? "312,500 ر.س" : "SAR 312,500"}</span>
-            </button>
+            {distributor && (
+              <button
+                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm"
+                style={{
+                  background: "oklch(0.96 0.01 160)",
+                  color: "oklch(0.38 0.06 160)",
+                  fontFamily: "IBM Plex Sans Arabic, sans-serif",
+                }}
+                onClick={() => {
+                  const avail = distributor.creditLimit - distributor.creditUsed;
+                  const formatted = new Intl.NumberFormat(dir === "rtl" ? "ar-SA" : "en-US").format(avail);
+                  toast.info(dir === "rtl" ? `الائتمان المتاح: ${formatted} ر.س` : `Available Credit: SAR ${formatted}`);
+                }}
+              >
+                <CreditCard className="w-4 h-4" />
+                <span>
+                  {(() => {
+                    const avail = distributor.creditLimit - distributor.creditUsed;
+                    const formatted = new Intl.NumberFormat(dir === "rtl" ? "ar-SA" : "en-US").format(avail);
+                    return dir === "rtl" ? `${formatted} ر.س` : `SAR ${formatted}`;
+                  })()}
+                </span>
+              </button>
+            )}
 
             {/* Avatar */}
             <div

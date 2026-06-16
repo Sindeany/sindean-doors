@@ -442,16 +442,7 @@ export default function AdminQCInspection() {
         <div className="text-center py-16">
           <ShieldCheck className="w-14 h-14 mx-auto mb-3 text-gray-200" />
           <p className="text-gray-400 mb-4 text-sm">لا توجد فحوصات بعد</p>
-          <button
-            onClick={() => seedMutation.mutate()}
-            disabled={seedMutation.isPending}
-            className="px-5 py-2 rounded-xl text-sm font-semibold text-white"
-            style={{ background: "oklch(0.38 0.06 160)" }}
-          >
-            {seedMutation.isPending
-              ? "جارٍ الإضافة..."
-              : "إضافة بيانات تجريبية"}
-          </button>
+          {/* Seed button deleted for production */}
         </div>
       )}
 

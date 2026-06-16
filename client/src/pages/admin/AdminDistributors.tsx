@@ -1508,13 +1508,7 @@ export default function AdminDistributors() {
           <div className="flex flex-col items-center justify-center py-12 gap-3">
             <Users className="w-12 h-12 text-gray-300" />
             <p className="text-gray-500">لا يوجد موزعون مسجلون</p>
-            <Button
-              variant="outline"
-              className="gap-2 text-amber-700 border-amber-300"
-              onClick={() => seedMutation.mutate()}
-            >
-              <Download className="w-4 h-4" /> تحميل البيانات التجريبية
-            </Button>
+            {/* Seed button deleted for production */}
           </div>
         )}
 

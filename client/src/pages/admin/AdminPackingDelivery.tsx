@@ -627,16 +627,7 @@ export default function AdminPackingDelivery() {
       {!isLoading && PACKING_ORDERS.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 gap-4">
           <p className="text-gray-400 text-sm">لا توجد طلبات تغليف حتى الآن</p>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => seedMutation.mutate()}
-            disabled={seedMutation.isPending}
-          >
-            {seedMutation.isPending
-              ? "جاري الإضافة..."
-              : "إضافة بيانات تجريبية"}
-          </Button>
+          {/* Seed button deleted for production */}
         </div>
       )}
 

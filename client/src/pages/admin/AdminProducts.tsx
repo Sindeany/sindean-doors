@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // AdminProducts - إدارة المنتجات والكتالوج (DB-backed via tRPC)
 // ============================================================
 import { useState } from "react";
@@ -724,20 +724,7 @@ export default function AdminProducts() {
               >
                 {isRtl ? "المؤرشفة" : "Archived"}
               </button>
-              {!isLoading && (allProducts as Product[]).length === 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 text-xs"
-                  onClick={() => seedMutation.mutate()}
-                  disabled={seedMutation.isPending}
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  {seedMutation.isPending
-                    ? "جاري الاستيراد..."
-                    : "استيراد المنتجات الأساسية"}
-                </Button>
-              )}
+              {/* Seed button deleted for production */}
               <Button
                 onClick={() => navigate("/admin/products/new")}
                 className="gap-2 text-white flex-shrink-0"
@@ -942,19 +929,7 @@ export default function AdminProducts() {
                 <p className="text-sm">
                   {isRtl ? "لا توجد منتجات" : "No products found"}
                 </p>
-                {(allProducts as Product[]).length === 0 && (
-                  <Button
-                    className="mt-4 gap-2 text-white"
-                    style={{ background: "oklch(0.38 0.06 160)" }}
-                    onClick={() => seedMutation.mutate()}
-                    disabled={seedMutation.isPending}
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    {seedMutation.isPending
-                      ? "جاري الاستيراد..."
-                      : "استيراد المنتجات الأساسية (12 منتج)"}
-                  </Button>
-                )}
+                {/* Seed button deleted for production */}
               </div>
             )}
           </div>

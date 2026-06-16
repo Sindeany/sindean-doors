@@ -342,6 +342,8 @@ const ordersRouter = router({
       qcRows,
       packingRows,
       reviewRows,
+      doorOrderRows,
+      inventoryRows,
     ] = await Promise.all([
       db.query.distributors.findMany({ columns: { status: true } }),
       db.query.complaints.findMany({ columns: { status: true } }),
@@ -351,6 +353,8 @@ const ordersRouter = router({
       db.query.postOrderReviews.findMany({
         columns: { status: true, clientRating: true },
       }),
+      db.query.doorOrders.findMany({ columns: { status: true } }),
+      db.query.inventoryItems.findMany({ columns: { currentQty: true, minQty: true } }),
     ]);
 
     const activeDistributors = distributorRows.filter(
@@ -368,6 +372,7 @@ const ordersRouter = router({
     const qcTotal = qcRows.length;
     const qcPass = qcRows.filter(q => q.result === "pass").length;
     const qcPassRate = qcTotal > 0 ? Math.round((qcPass / qcTotal) * 100) : 0;
+    const pendingQc = qcRows.filter(q => q.result === "pending").length;
     const pendingPacking = packingRows.filter(
       p => p.packingStatus === "pending"
     ).length;
@@ -383,6 +388,14 @@ const ordersRouter = router({
           ) / 10
         : 0;
 
+    const activeOrdersCount = doorOrderRows.filter(
+      o => o.status !== "delivered" && o.status !== "cancelled"
+    ).length;
+    const inventoryTotalItems = inventoryRows.length;
+    const inventoryLowStockAlerts = inventoryRows.filter(
+      item => item.currentQty <= item.minQty
+    ).length;
+
     return {
       activeDistributors,
       pendingDistributors,
@@ -390,9 +403,13 @@ const ordersRouter = router({
       inProductionWorkOrders,
       qcPassRate,
       qcTotal,
+      pendingQc,
       pendingPacking,
       pendingReviews,
       avgReviewRating,
+      activeOrdersCount,
+      inventoryTotalItems,
+      inventoryLowStockAlerts,
     };
   }),
 

@@ -412,4 +412,55 @@ export const distributorsRouter = router({
         .where(eq(schema.distributors.id, distId));
       return { success: true };
     }),
+
+  // ── تسجيل موزع جديد ───────────────────────────────────────────────────────
+  register: publicProcedure
+    .input(
+      z.object({
+        name: z.string().min(1).max(255),
+        company: z.string().min(1).max(255),
+        email: z.string().email().max(255),
+        password: z.string().min(8),
+        phone: z.string().min(1).max(50),
+        city: z.string().max(100).default(""),
+        region: z.string().max(100).default(""),
+        whatsapp: z.string().max(50).optional(),
+        website: z.string().max(255).optional(),
+        commercialReg: z.string().max(50).optional(),
+        vatNumber: z.string().max(20).optional(),
+        bankName: z.string().max(255).optional(),
+        bankIban: z.string().max(40).optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      // 1. تحقق من عدم تكرار البريد الإلكتروني
+      const existing = await db.query.distributors.findFirst({
+        where: eq(schema.distributors.email, input.email),
+      });
+      if (existing) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "البريد الإلكتروني مسجل مسبقاً",
+        });
+      }
+
+      // 2. تشفير كلمة المرور
+      const passwordHash = await bcrypt.hash(input.password, 10);
+      const now = Date.now();
+      const today = new Date().toISOString().split("T")[0];
+
+      // 3. إدخال الموزع الجديد بوضع معلق (pending)
+      const { password, ...rest } = input;
+      const [result] = await db.insert(schema.distributors).values({
+        ...rest,
+        passwordHash,
+        status: "pending",
+        tier: "bronze",
+        joinDate: today,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      return { id: result.insertId, success: true };
+    }),
 });

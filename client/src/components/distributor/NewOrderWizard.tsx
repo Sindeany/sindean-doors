@@ -45,6 +45,7 @@ interface ConfiguredItem {
 interface WizardProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
   initialOrderType?: OrderType;
   prefillItems?: any[];
   draftId?: string;
@@ -121,6 +122,12 @@ export const KEY_TRANSLATIONS: Record<string, string> = {
   wall_thickness: "سمك الجدار",
   frame_width: "عرض البرواز",
   frame_height: "طول البرواز",
+  molding_side: "جهة التكسية",
+  style_molding_side: "جهة التكسية",
+  side_width: "عرض التكسية الجانبية",
+  style_side_width: "عرض التكسية الجانبية",
+  special_file: "ملف التصميم الخاص",
+  style_special_file: "ملف التصميم الخاص",
 };
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -137,15 +144,20 @@ function calcPriceAdj(
       if (grp.type === "toggle" && (sel === "true" || (sel as any) === true)) {
         total += grp.priceAdj ?? 0;
       } else if (typeof sel === "string") {
-        const val = grp.values?.find((v: any) => v.id === sel);
-        if (val) total += val.priceAdj ?? 0;
-        // Sub-options price
-        if (val?.hasSubOptions && val.subOptions) {
-          for (const sub of val.subOptions) {
-            const subSel = subSelections[grp.id]?.[sub.id];
-            if (sub.values && typeof subSel === "string") {
-              const sv = sub.values.find((v: any) => v.id === subSel);
-              if (sv) total += sv.priceAdj ?? 0;
+        const selectedIds = sel.split(",").filter(Boolean);
+        for (const selectedId of selectedIds) {
+          const val = grp.values?.find((v: any) => v.id === selectedId);
+          if (val) {
+            total += val.priceAdj ?? 0;
+            // Sub-options price
+            if (val.hasSubOptions && val.subOptions) {
+              for (const sub of val.subOptions) {
+                const subSel = subSelections[grp.id]?.[sub.id];
+                if (sub.values && typeof subSel === "string") {
+                  const sv = sub.values.find((v: any) => v.id === subSel);
+                  if (sv) total += sv.priceAdj ?? 0;
+                }
+              }
             }
           }
         }
@@ -435,7 +447,7 @@ function GroupRenderer({
   group: any;
   value: string | boolean | number | string[] | undefined;
   subValues: Record<string, string | number> | undefined;
-  onChange: (v: string | boolean | number) => void;
+  onChange: (v: string | boolean | number | string[]) => void;
   onSubChange: (subId: string, v: string | number) => void;
   isRtl: boolean;
 }) {
@@ -451,6 +463,72 @@ function GroupRenderer({
           </p>
         )}
         <div className="flex-1 h-px bg-gray-100" />
+      </div>
+    );
+  }
+
+  if (group.type === "checkbox_cards") {
+    const selectedList = Array.isArray(value)
+      ? value
+      : typeof value === "string"
+      ? value.split(",").filter(Boolean)
+      : [];
+
+    const handleToggle = (id: string) => {
+      let newList: string[];
+      if (selectedList.includes(id)) {
+        newList = selectedList.filter((x: string) => x !== id);
+      } else {
+        newList = [...selectedList, id];
+      }
+      onChange(newList);
+    };
+
+    return (
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {enabledValues.map((v: any) => {
+          const selected = selectedList.includes(v.id);
+          return (
+            <div
+              key={v.id}
+              onClick={() => handleToggle(v.id)}
+              className={`relative p-2.5 rounded-lg border text-right transition-all cursor-pointer ${
+                selected
+                  ? "border-[oklch(0.38_0.06_160)] bg-[oklch(0.38_0.06_160)]/5 shadow-sm font-semibold"
+                  : "border-gray-200 bg-white hover:border-[oklch(0.38_0.06_160)]/40"
+              }`}
+            >
+              <span className={`absolute top-1.5 left-1.5 w-4 h-4 rounded flex items-center justify-center border transition-all ${
+                selected ? "bg-[oklch(0.38_0.06_160)] border-[oklch(0.38_0.06_160)]" : "border-gray-300 bg-white"
+              }`}>
+                {selected && <Check className="w-2.5 h-2.5 text-white" />}
+              </span>
+              <p className="font-semibold text-xs text-gray-800 pr-4">{v.label}</p>
+              {v.description && (
+                <p className="text-[10px] text-gray-550 mt-0.5 leading-relaxed pr-4">
+                  {v.description}
+                </p>
+              )}
+              {v.priceAdj !== undefined && v.priceAdj !== 0 && (
+                <p className={`text-[10px] font-bold mt-1 pr-4 ${v.priceAdj > 0 ? "text-[oklch(0.68_0.10_60)]" : "text-green-600"}`}>
+                  {v.priceAdj > 0 ? `+${v.priceAdj}` : v.priceAdj} ر.س
+                </p>
+              )}
+              {selected && v.hasSubOptions && v.subOptions && (
+                <div onClick={(e) => e.stopPropagation()} className="mt-2 text-right pr-4">
+                  {v.subOptions.map((sub: any) => (
+                    <SubOptionInput
+                      key={sub.id}
+                      sub={sub}
+                      value={subValues?.[sub.id]}
+                      onChange={(sv) => onSubChange(sub.id, sv)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -697,7 +775,7 @@ function StepIndicator({ steps, current, dir }: { steps: string[]; current: numb
 }
 
 // ─── Main Component ─────────────────────────────────────────
-export default function NewOrderWizard({ isOpen, onClose, initialOrderType, prefillItems, draftId }: WizardProps) {
+export default function NewOrderWizard({ isOpen, onClose, onSuccess, initialOrderType, prefillItems, draftId }: WizardProps) {
   const { dir } = useLanguage();
   const isRtl = dir === "rtl";
   const { distributor } = useDistributorAuth();
@@ -975,6 +1053,7 @@ export default function NewOrderWizard({ isOpen, onClose, initialOrderType, pref
         source: "manual",
       });
       toast.success(isRtl ? `تم إرسال الطلب بنجاح! رقم الطلب: ${result.orderNumber}` : `Order submitted! Order #: ${result.orderNumber}`);
+      if (onSuccess) onSuccess();
       onClose();
     } catch (err: any) {
       toast.error(isRtl ? "فشل إرسال الطلب" : "Failed to submit order", { description: err.message });

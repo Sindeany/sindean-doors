@@ -11,6 +11,43 @@ import {
 
 // NOTE: duplicated from AdminDistributorProfile.tsx — extract to shared helper later
 
+export const VALUE_TRANSLATIONS: Record<string, string> = {
+  // Door types / styles
+  flat: "فلات (مسطح)",
+  top_molding: "مع تكسيات (فوق الباب)",
+  hidden: "باب مخفي",
+  side_molding: "تكسيات جانبية",
+  cnc: "مع حفر CNC",
+  sliding: "باب سحاب",
+  special: "طلبات خاصة",
+  
+  // Colors
+  white: "أبيض",
+  beige: "بيج",
+  light_oak: "بلوط فاتح",
+  dark_walnut: "جوز داكن",
+  charcoal: "فحمي",
+  grey: "رمادي",
+  mahogany: "ماهوجني",
+  black: "أسود",
+  custom: "لون مخصص",
+
+  // Sub-options / other values
+  one_side: "جانب واحد",
+  two_sides: "جانبين",
+  true: "نعم",
+  false: "لا",
+};
+
+export const translateValue = (val: unknown): string => {
+  if (val === undefined || val === null || val === "") return "—";
+  const str = String(val);
+  return str
+    .split(",")
+    .map(v => VALUE_TRANSLATIONS[v.trim()] || v.trim())
+    .join("، ");
+};
+
 // ─── Types ────────────────────────────────────────────────────
 type OrderStatus = "pending" | "approved" | "production" | "ready" | "shipped" | "delivered" | "cancelled";
 type ComplaintStatus = "open" | "under_review" | "resolved" | "rejected";
@@ -261,10 +298,10 @@ export default function AdminDistributorOrders() {
                                             {Object.entries(it.selections).map(([key, val]) => {
                                               if (["width", "door_leaf_height", "wall_thickness", "material", "color_choice"].includes(key)) return null;
                                               const label = KEY_TRANSLATIONS[key] || key.replace(/_/g, " ");
-                                              const cleanVal = val === "true" ? "نعم" : val === "false" ? "لا" : val;
+                                              const cleanVal = translateValue(val);
                                               return (
                                                 <span key={key} className="bg-white px-1.5 py-0.5 rounded border border-gray-205">
-                                                  {label}: <strong className="text-gray-700">{String(cleanVal)}</strong>
+                                                  {label}: <strong className="text-gray-700">{cleanVal}</strong>
                                                 </span>
                                               );
                                             })}

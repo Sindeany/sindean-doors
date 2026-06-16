@@ -655,4 +655,205 @@ export const analyticsRouter = router({
           .sort((a, b) => b.amountRiyals - a.amountRiyals),
       };
     }),
+
+  // ── 7. تقارير الكفاءة التشغيلية ───────────────────────────
+  efficiency: adminProcedure.query(async () => {
+    const [doorOrders, workOrders, qcInspectionsList, packingOrdersList, complaintsList] = await Promise.all([
+      db.query.doorOrders.findMany(),
+      db.query.workOrders.findMany(),
+      db.query.qcInspections.findMany(),
+      db.query.packingOrders.findMany(),
+      db.query.complaints.findMany(),
+    ]);
+
+    const MS_PER_DAY = 86_400_000;
+    const now = Date.now();
+
+    // 1. حساب مقاييس المراحل
+    // مرحلة الموافقة
+    const approvedOrders = doorOrders.filter(o => o.status !== "new" && o.status !== "reviewing");
+    const totalApprovedTime = approvedOrders.reduce((sum, o) => sum + (o.updatedAt - o.createdAt), 0);
+    const approvalAvgTime = approvedOrders.length > 0 ? Math.round((totalApprovedTime / approvedOrders.length) / 360000) / 10 : 0;
+    const approvalUniqueDays = new Set(approvedOrders.map(o => new Date(o.createdAt).toDateString())).size;
+    const approvalThroughput = approvedOrders.length > 0 ? Math.round((approvedOrders.length / Math.max(1, approvalUniqueDays)) * 10) / 10 : 0;
+    const reviewingOrders = doorOrders.filter(o => o.status === "reviewing").length;
+    const approvalErrorRate = doorOrders.length > 0 ? Math.round((reviewingOrders / doorOrders.length) * 1000) / 10 : 0;
+
+    // مرحلة الإنتاج
+    const completedWOs = workOrders.filter(w => w.status === "completed");
+    const totalProdTime = completedWOs.reduce((sum, w) => sum + (w.updatedAt - w.createdAt), 0);
+    const prodAvgTime = completedWOs.length > 0 ? Math.round((totalProdTime / completedWOs.length) / 360000) / 10 : 0;
+    const prodUniqueDays = new Set(completedWOs.map(w => new Date(w.createdAt).toDateString())).size;
+    const prodThroughput = completedWOs.length > 0 ? Math.round((completedWOs.length / Math.max(1, prodUniqueDays)) * 10) / 10 : 0;
+    const errWOs = workOrders.filter(w => w.status === "cancelled" || w.status === "on_hold").length;
+    const prodErrorRate = workOrders.length > 0 ? Math.round((errWOs / workOrders.length) * 1000) / 10 : 0;
+
+    // مراقبة الجودة
+    const completedQCs = qcInspectionsList.filter(q => q.result !== "pending");
+    const totalQcTime = completedQCs.reduce((sum, q) => sum + (q.inspectedAt - q.createdAt), 0);
+    const qcAvgTime = completedQCs.length > 0 ? Math.round((totalQcTime / completedQCs.length) / 360000) / 10 : 0;
+    const qcUniqueDays = new Set(completedQCs.map(q => new Date(q.createdAt).toDateString())).size;
+    const qcThroughput = completedQCs.length > 0 ? Math.round((completedQCs.length / Math.max(1, qcUniqueDays)) * 10) / 10 : 0;
+    const failedQCs = completedQCs.filter(q => q.result === "fail").length;
+    const qcErrorRate = completedQCs.length > 0 ? Math.round((failedQCs / completedQCs.length) * 1000) / 10 : 0;
+
+    // التعبئة والتغليف
+    const completedPackings = packingOrdersList.filter(p => p.packingStatus === "done");
+    const totalPackingTime = completedPackings.reduce((sum, p) => sum + (p.updatedAt - p.createdAt), 0);
+    const packingAvgTime = completedPackings.length > 0 ? Math.round((totalPackingTime / completedPackings.length) / 360000) / 10 : 0;
+    const packingUniqueDays = new Set(completedPackings.map(p => new Date(p.createdAt).toDateString())).size;
+    const packingThroughput = completedPackings.length > 0 ? Math.round((completedPackings.length / Math.max(1, packingUniqueDays)) * 10) / 10 : 0;
+    const packingErrorRate = 0;
+
+    // الشحن والتوصيل
+    const completedDeliveries = packingOrdersList.filter(p => p.deliveryStatus === "done");
+    const totalDeliveryTime = completedDeliveries.reduce((sum, p) => sum + (p.updatedAt - p.createdAt), 0);
+    const shippingAvgTime = completedDeliveries.length > 0 ? Math.round((totalDeliveryTime / completedDeliveries.length) / 360000) / 10 : 0;
+    const shippingUniqueDays = new Set(completedDeliveries.map(p => new Date(p.createdAt).toDateString())).size;
+    const shippingThroughput = completedDeliveries.length > 0 ? Math.round((completedDeliveries.length / Math.max(1, shippingUniqueDays)) * 10) / 10 : 0;
+    const shippingErrorRate = 0;
+
+    // 2. الاتجاه الأسبوعي (آخر 7 أيام)
+    const weeklyTrend = [];
+    const DAY_NAMES_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now - i * MS_PER_DAY);
+      const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      const endOfDay = startOfDay + MS_PER_DAY;
+
+      const approvedOnDay = doorOrders.filter(
+        o => o.status !== "new" && o.status !== "reviewing" && o.updatedAt >= startOfDay && o.updatedAt < endOfDay
+      ).length;
+
+      const prodOnDay = workOrders.filter(
+        w => w.status === "completed" && w.updatedAt >= startOfDay && w.updatedAt < endOfDay
+      ).length;
+
+      const packedOnDay = packingOrdersList.filter(
+        p => p.packingStatus === "done" && p.updatedAt >= startOfDay && p.updatedAt < endOfDay
+      ).length;
+
+      const deliveredOnDay = packingOrdersList.filter(
+        p => p.deliveryStatus === "done" && p.updatedAt >= startOfDay && p.updatedAt < endOfDay
+      ).length;
+
+      weeklyTrend.push({
+        day: DAY_NAMES_AR[d.getDay()],
+        "موافقة": approvedOnDay,
+        "إنتاج": prodOnDay,
+        "شحن": packedOnDay,
+        "تسليم": deliveredOnDay,
+      });
+    }
+
+    // 3. الإنتاجية الشهرية (آخر 6 أشهر)
+    const monthlyThroughput = [];
+    const MONTH_AR = [
+      "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+      "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"
+    ];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i, 1);
+      d.setHours(0, 0, 0, 0);
+      const startOfMonth = d.getTime();
+      
+      const nextMonth = new Date(d);
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      const endOfMonth = nextMonth.getTime();
+
+      const completedCount = doorOrders.filter(
+        o => (o.status === "delivered" || o.status === "ready") && o.createdAt >= startOfMonth && o.createdAt < endOfMonth
+      ).length;
+
+      const cancelledCount = doorOrders.filter(
+        o => o.status === "cancelled" && o.createdAt >= startOfMonth && o.createdAt < endOfMonth
+      ).length;
+
+      const totalCount = doorOrders.filter(
+        o => o.createdAt >= startOfMonth && o.createdAt < endOfMonth
+      ).length;
+
+      monthlyThroughput.push({
+        month: MONTH_AR[d.getMonth()],
+        "طلبات": totalCount,
+        "مكتملة": completedCount,
+        "ملغية": cancelledCount,
+      });
+    }
+
+    // 4. تصنيف الأخطاء من الشكاوى
+    const labelMap: Record<string, string> = {
+      size: "خطأ في المقاس",
+      color: "خطأ في اللون",
+      delay: "تأخر الشحن",
+      damage: "كسر أثناء النقل",
+      shortage: "نقص في الكمية",
+      quality: "جودة التصنيع",
+      other: "أخرى",
+    };
+    const colorMap: Record<string, string> = {
+      size: "#ef4444",
+      color: "#f97316",
+      delay: "#eab308",
+      damage: "#8b5cf6",
+      shortage: "#06b6d4",
+      quality: "#10b981",
+      other: "#6b7280",
+    };
+    const errorCounts: Record<string, number> = {
+      size: 0,
+      color: 0,
+      delay: 0,
+      damage: 0,
+      shortage: 0,
+      quality: 0,
+      other: 0,
+    };
+    for (const c of complaintsList) {
+      errorCounts[c.type] = (errorCounts[c.type] ?? 0) + 1;
+    }
+    const errorBreakdown = Object.entries(errorCounts).map(([type, count]) => ({
+      name: labelMap[type] ?? type,
+      value: count,
+      color: colorMap[type] ?? "#6b7280",
+    }));
+
+    // 5. سجل تاريخ وقت التسليم (آخر 8 أسابيع)
+    const deliveryTimeHistory = [];
+    for (let i = 7; i >= 0; i--) {
+      const startOfWeek = now - (i + 1) * 7 * MS_PER_DAY;
+      const endOfWeek = now - i * 7 * MS_PER_DAY;
+
+      const deliveredInWeek = packingOrdersList.filter(
+        p => p.deliveryStatus === "done" && p.updatedAt >= startOfWeek && p.updatedAt < endOfWeek
+      );
+
+      let avgTime = 0;
+      if (deliveredInWeek.length > 0) {
+        const totalTime = deliveredInWeek.reduce((sum, p) => sum + (p.updatedAt - p.createdAt), 0);
+        avgTime = Math.round((totalTime / deliveredInWeek.length) / 360000) / 10;
+      }
+
+      deliveryTimeHistory.push({
+        week: `أسبوع ${8 - i}`,
+        "متوسط": avgTime,
+        "هدف": 72,
+      });
+    }
+
+    return {
+      stages: [
+        { id: "approval", name: "مرحلة الموافقة", avgTime: approvalAvgTime, throughput: approvalThroughput, errorRate: approvalErrorRate, bottleneck: false },
+        { id: "production", name: "مرحلة الإنتاج", avgTime: prodAvgTime, throughput: prodThroughput, errorRate: prodErrorRate, bottleneck: false },
+        { id: "qc", name: "مراقبة الجودة", avgTime: qcAvgTime, throughput: qcThroughput, errorRate: qcErrorRate, bottleneck: false },
+        { id: "packaging", name: "التعبئة والتغليف", avgTime: packingAvgTime, throughput: packingThroughput, errorRate: packingErrorRate, bottleneck: false },
+        { id: "shipping", name: "الشحن والتوصيل", avgTime: shippingAvgTime, throughput: shippingThroughput, errorRate: shippingErrorRate, bottleneck: false },
+      ],
+      weeklyTrend,
+      monthlyThroughput,
+      errorBreakdown,
+      deliveryTimeHistory,
+    };
+  }),
 });

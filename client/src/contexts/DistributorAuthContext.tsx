@@ -3,7 +3,7 @@
 // Batch 3-b: استبدال mock auth بمصادقة حقيقية (httpOnly cookies + tRPC)
 // ============================================================
 
-import { createContext, useContext, ReactNode } from "react";
+import { createContext, useContext, ReactNode, useState, useEffect } from "react";
 import { DistributorProfile } from "@/lib/distributorData";
 import { trpc } from "@/lib/trpc";
 
@@ -21,20 +21,34 @@ const DistributorAuthContext = createContext<DistributorAuthContextType | null>(
 
 export function DistributorAuthProvider({ children }: { children: ReactNode }) {
   const utils = trpc.useUtils();
+  const [localDistributor, setLocalDistributor] = useState<DistributorProfile | null>(null);
 
   // استعادة الجلسة عند تحميل الصفحة عبر httpOnly cookie
   const meQuery = trpc.distributors.me.useQuery(undefined, {
     retry: false,
   });
 
-  const distributor = (meQuery.data as DistributorProfile) ?? null;
-  const isLoading = meQuery.isLoading;
+  // مزامنة حالة localDistributor مع meQuery عند تغير meQuery.data
+  useEffect(() => {
+    if (meQuery.data) {
+      setLocalDistributor(meQuery.data as DistributorProfile);
+    } else if (meQuery.isSuccess) {
+      setLocalDistributor(null);
+    }
+  }, [meQuery.data, meQuery.isSuccess]);
+
+  const distributor = localDistributor ?? (meQuery.data as DistributorProfile) ?? null;
+  const isLoading = meQuery.isLoading && !localDistributor;
 
   const logoutMutation = trpc.distributors.logout.useMutation({
-    onSettled: () => utils.distributors.me.reset(),
+    onSettled: () => {
+      setLocalDistributor(null);
+      utils.distributors.me.reset();
+    },
   });
 
   const login = (newDistributor: DistributorProfile) => {
+    setLocalDistributor(newDistributor);
     utils.distributors.me.invalidate();
   };
 

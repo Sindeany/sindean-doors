@@ -516,16 +516,7 @@ export default function AdminComplaints() {
             <p className="text-gray-500 mb-4">
               {isRtl ? "لا توجد شكاوى بعد" : "No complaints yet"}
             </p>
-            <button
-              onClick={() => seedMutation.mutate()}
-              disabled={seedMutation.isPending}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-white"
-              style={{ background: "oklch(0.38 0.06 160)" }}
-            >
-              {seedMutation.isPending
-                ? "جارٍ الإضافة..."
-                : "إضافة بيانات تجريبية"}
-            </button>
+            {/* Seed button deleted for production */}
           </div>
         )}
 

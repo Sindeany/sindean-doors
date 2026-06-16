@@ -3,21 +3,31 @@
 // Design: Architectural Luxury | Profile + credit + settings
 // ============================================================
 
+import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { useDistributorAuth } from "@/contexts/DistributorAuthContext";
 import DistributorLayout from "@/components/distributor/DistributorLayout";
 import { tierConfig } from "@/lib/distributorData";
-import { User, Building2, Phone, Mail, MapPin, CreditCard, Award, Edit } from "lucide-react";
+import { User, Building2, Phone, Mail, MapPin, CreditCard, Award, Edit, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 export default function DistributorAccount() {
-  const { distributor } = useDistributorAuth();
+  const { distributor, isLoading: authLoading } = useDistributorAuth();
   const [, navigate] = useLocation();
 
-  if (!distributor) {
-    navigate("/distributor");
-    return null;
+  useEffect(() => {
+    if (!authLoading && !distributor) {
+      navigate("/distributor");
+    }
+  }, [distributor, authLoading, navigate]);
+
+  if (authLoading || !distributor) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-oak" />
+      </div>
+    );
   }
 
   const tier = tierConfig[distributor.tier];

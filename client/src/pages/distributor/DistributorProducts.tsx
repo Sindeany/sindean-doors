@@ -3,28 +3,37 @@
 // Design: Architectural Luxury | Distributor-exclusive pricing catalog
 // ============================================================
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useDistributorAuth } from "@/contexts/DistributorAuthContext";
 import DistributorLayout from "@/components/distributor/DistributorLayout";
 import { allProducts, Product, PriceTier } from "@/lib/productsData";
-import { Search, ShoppingCart, Tag, Info } from "lucide-react";
+import { Search, ShoppingCart, Tag, Info, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function DistributorProducts() {
-  const { distributor } = useDistributorAuth();
+  const { distributor, isLoading: authLoading } = useDistributorAuth();
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [cart, setCart] = useState<{ id: number; qty: number }[]>([]);
   const { dir } = useLanguage();
 
-  if (!distributor) {
-    navigate("/distributor");
-    return null;
+  useEffect(() => {
+    if (!authLoading && !distributor) {
+      navigate("/distributor");
+    }
+  }, [distributor, authLoading, navigate]);
+
+  if (authLoading || !distributor) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-oak" />
+      </div>
+    );
   }
 
   const discountRate = distributor.discount / 100;

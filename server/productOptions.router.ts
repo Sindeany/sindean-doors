@@ -215,7 +215,19 @@ const productOptionsRouter = router({
     });
     if (!row) return null;
     try {
-      return JSON.parse(row.sectionsJson);
+      const sections = JSON.parse(row.sectionsJson);
+      if (Array.isArray(sections)) {
+        for (const sec of sections) {
+          if (sec.id === "door_shape" && Array.isArray(sec.groups)) {
+            for (const grp of sec.groups) {
+              if (grp.id === "style") {
+                grp.type = "checkbox_cards";
+              }
+            }
+          }
+        }
+      }
+      return sections;
     } catch {
       return null;
     }

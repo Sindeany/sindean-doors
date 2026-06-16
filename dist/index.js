@@ -2388,7 +2388,19 @@ var productOptionsRouter = router({
     });
     if (!row) return null;
     try {
-      return JSON.parse(row.sectionsJson);
+      const sections = JSON.parse(row.sectionsJson);
+      if (Array.isArray(sections)) {
+        for (const sec of sections) {
+          if (sec.id === "door_shape" && Array.isArray(sec.groups)) {
+            for (const grp of sec.groups) {
+              if (grp.id === "style") {
+                grp.type = "checkbox_cards";
+              }
+            }
+          }
+        }
+      }
+      return sections;
     } catch {
       return null;
     }
@@ -4900,6 +4912,48 @@ var distributorsRouter = router({
       updatedAt: Date.now()
     }).where(eq13(schema_exports.distributors.id, distId));
     return { success: true };
+  }),
+  // ── تسجيل موزع جديد ───────────────────────────────────────────────────────
+  register: publicProcedure.input(
+    z12.object({
+      name: z12.string().min(1).max(255),
+      company: z12.string().min(1).max(255),
+      email: z12.string().email().max(255),
+      password: z12.string().min(8),
+      phone: z12.string().min(1).max(50),
+      city: z12.string().max(100).default(""),
+      region: z12.string().max(100).default(""),
+      whatsapp: z12.string().max(50).optional(),
+      website: z12.string().max(255).optional(),
+      commercialReg: z12.string().max(50).optional(),
+      vatNumber: z12.string().max(20).optional(),
+      bankName: z12.string().max(255).optional(),
+      bankIban: z12.string().max(40).optional()
+    })
+  ).mutation(async ({ input }) => {
+    const existing = await db.query.distributors.findFirst({
+      where: eq13(schema_exports.distributors.email, input.email)
+    });
+    if (existing) {
+      throw new TRPCError9({
+        code: "CONFLICT",
+        message: "\u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A \u0645\u0633\u062C\u0644 \u0645\u0633\u0628\u0642\u0627\u064B"
+      });
+    }
+    const passwordHash = await bcrypt5.hash(input.password, 10);
+    const now = Date.now();
+    const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+    const { password, ...rest } = input;
+    const [result] = await db.insert(schema_exports.distributors).values({
+      ...rest,
+      passwordHash,
+      status: "pending",
+      tier: "bronze",
+      joinDate: today,
+      createdAt: now,
+      updatedAt: now
+    });
+    return { id: result.insertId, success: true };
   })
 });
 
@@ -8634,6 +8688,182 @@ var analyticsRouter = router({
         amountRiyals
       })).sort((a, b) => b.amountRiyals - a.amountRiyals)
     };
+  }),
+  // ── 7. تقارير الكفاءة التشغيلية ───────────────────────────
+  efficiency: adminProcedure.query(async () => {
+    const [doorOrders2, workOrders2, qcInspectionsList, packingOrdersList, complaintsList] = await Promise.all([
+      db.query.doorOrders.findMany(),
+      db.query.workOrders.findMany(),
+      db.query.qcInspections.findMany(),
+      db.query.packingOrders.findMany(),
+      db.query.complaints.findMany()
+    ]);
+    const MS_PER_DAY = 864e5;
+    const now = Date.now();
+    const approvedOrders = doorOrders2.filter((o) => o.status !== "new" && o.status !== "reviewing");
+    const totalApprovedTime = approvedOrders.reduce((sum, o) => sum + (o.updatedAt - o.createdAt), 0);
+    const approvalAvgTime = approvedOrders.length > 0 ? Math.round(totalApprovedTime / approvedOrders.length / 36e4) / 10 : 0;
+    const approvalUniqueDays = new Set(approvedOrders.map((o) => new Date(o.createdAt).toDateString())).size;
+    const approvalThroughput = approvedOrders.length > 0 ? Math.round(approvedOrders.length / Math.max(1, approvalUniqueDays) * 10) / 10 : 0;
+    const reviewingOrders = doorOrders2.filter((o) => o.status === "reviewing").length;
+    const approvalErrorRate = doorOrders2.length > 0 ? Math.round(reviewingOrders / doorOrders2.length * 1e3) / 10 : 0;
+    const completedWOs = workOrders2.filter((w) => w.status === "completed");
+    const totalProdTime = completedWOs.reduce((sum, w) => sum + (w.updatedAt - w.createdAt), 0);
+    const prodAvgTime = completedWOs.length > 0 ? Math.round(totalProdTime / completedWOs.length / 36e4) / 10 : 0;
+    const prodUniqueDays = new Set(completedWOs.map((w) => new Date(w.createdAt).toDateString())).size;
+    const prodThroughput = completedWOs.length > 0 ? Math.round(completedWOs.length / Math.max(1, prodUniqueDays) * 10) / 10 : 0;
+    const errWOs = workOrders2.filter((w) => w.status === "cancelled" || w.status === "on_hold").length;
+    const prodErrorRate = workOrders2.length > 0 ? Math.round(errWOs / workOrders2.length * 1e3) / 10 : 0;
+    const completedQCs = qcInspectionsList.filter((q) => q.result !== "pending");
+    const totalQcTime = completedQCs.reduce((sum, q) => sum + (q.inspectedAt - q.createdAt), 0);
+    const qcAvgTime = completedQCs.length > 0 ? Math.round(totalQcTime / completedQCs.length / 36e4) / 10 : 0;
+    const qcUniqueDays = new Set(completedQCs.map((q) => new Date(q.createdAt).toDateString())).size;
+    const qcThroughput = completedQCs.length > 0 ? Math.round(completedQCs.length / Math.max(1, qcUniqueDays) * 10) / 10 : 0;
+    const failedQCs = completedQCs.filter((q) => q.result === "fail").length;
+    const qcErrorRate = completedQCs.length > 0 ? Math.round(failedQCs / completedQCs.length * 1e3) / 10 : 0;
+    const completedPackings = packingOrdersList.filter((p) => p.packingStatus === "done");
+    const totalPackingTime = completedPackings.reduce((sum, p) => sum + (p.updatedAt - p.createdAt), 0);
+    const packingAvgTime = completedPackings.length > 0 ? Math.round(totalPackingTime / completedPackings.length / 36e4) / 10 : 0;
+    const packingUniqueDays = new Set(completedPackings.map((p) => new Date(p.createdAt).toDateString())).size;
+    const packingThroughput = completedPackings.length > 0 ? Math.round(completedPackings.length / Math.max(1, packingUniqueDays) * 10) / 10 : 0;
+    const packingErrorRate = 0;
+    const completedDeliveries = packingOrdersList.filter((p) => p.deliveryStatus === "done");
+    const totalDeliveryTime = completedDeliveries.reduce((sum, p) => sum + (p.updatedAt - p.createdAt), 0);
+    const shippingAvgTime = completedDeliveries.length > 0 ? Math.round(totalDeliveryTime / completedDeliveries.length / 36e4) / 10 : 0;
+    const shippingUniqueDays = new Set(completedDeliveries.map((p) => new Date(p.createdAt).toDateString())).size;
+    const shippingThroughput = completedDeliveries.length > 0 ? Math.round(completedDeliveries.length / Math.max(1, shippingUniqueDays) * 10) / 10 : 0;
+    const shippingErrorRate = 0;
+    const weeklyTrend = [];
+    const DAY_NAMES_AR = ["\u0627\u0644\u0623\u062D\u062F", "\u0627\u0644\u0627\u062B\u0646\u064A\u0646", "\u0627\u0644\u062B\u0644\u0627\u062B\u0627\u0621", "\u0627\u0644\u0623\u0631\u0628\u0639\u0627\u0621", "\u0627\u0644\u062E\u0645\u064A\u0633", "\u0627\u0644\u062C\u0645\u0639\u0629", "\u0627\u0644\u0633\u0628\u062A"];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now - i * MS_PER_DAY);
+      const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      const endOfDay = startOfDay + MS_PER_DAY;
+      const approvedOnDay = doorOrders2.filter(
+        (o) => o.status !== "new" && o.status !== "reviewing" && o.updatedAt >= startOfDay && o.updatedAt < endOfDay
+      ).length;
+      const prodOnDay = workOrders2.filter(
+        (w) => w.status === "completed" && w.updatedAt >= startOfDay && w.updatedAt < endOfDay
+      ).length;
+      const packedOnDay = packingOrdersList.filter(
+        (p) => p.packingStatus === "done" && p.updatedAt >= startOfDay && p.updatedAt < endOfDay
+      ).length;
+      const deliveredOnDay = packingOrdersList.filter(
+        (p) => p.deliveryStatus === "done" && p.updatedAt >= startOfDay && p.updatedAt < endOfDay
+      ).length;
+      weeklyTrend.push({
+        day: DAY_NAMES_AR[d.getDay()],
+        "\u0645\u0648\u0627\u0641\u0642\u0629": approvedOnDay,
+        "\u0625\u0646\u062A\u0627\u062C": prodOnDay,
+        "\u0634\u062D\u0646": packedOnDay,
+        "\u062A\u0633\u0644\u064A\u0645": deliveredOnDay
+      });
+    }
+    const monthlyThroughput = [];
+    const MONTH_AR2 = [
+      "\u064A\u0646\u0627\u064A\u0631",
+      "\u0641\u0628\u0631\u0627\u064A\u0631",
+      "\u0645\u0627\u0631\u0633",
+      "\u0623\u0628\u0631\u064A\u0644",
+      "\u0645\u0627\u064A\u0648",
+      "\u064A\u0648\u0646\u064A\u0648",
+      "\u064A\u0648\u0644\u064A\u0648",
+      "\u0623\u063A\u0633\u0637\u0633",
+      "\u0633\u0628\u062A\u0645\u0628\u0631",
+      "\u0623\u0643\u062A\u0648\u0628\u0631",
+      "\u0646\u0648\u0641\u0645\u0628\u0631",
+      "\u062F\u064A\u0633\u0645\u0628\u0631"
+    ];
+    for (let i = 5; i >= 0; i--) {
+      const d = /* @__PURE__ */ new Date();
+      d.setMonth(d.getMonth() - i, 1);
+      d.setHours(0, 0, 0, 0);
+      const startOfMonth = d.getTime();
+      const nextMonth = new Date(d);
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      const endOfMonth = nextMonth.getTime();
+      const completedCount = doorOrders2.filter(
+        (o) => (o.status === "delivered" || o.status === "ready") && o.createdAt >= startOfMonth && o.createdAt < endOfMonth
+      ).length;
+      const cancelledCount = doorOrders2.filter(
+        (o) => o.status === "cancelled" && o.createdAt >= startOfMonth && o.createdAt < endOfMonth
+      ).length;
+      const totalCount = doorOrders2.filter(
+        (o) => o.createdAt >= startOfMonth && o.createdAt < endOfMonth
+      ).length;
+      monthlyThroughput.push({
+        month: MONTH_AR2[d.getMonth()],
+        "\u0637\u0644\u0628\u0627\u062A": totalCount,
+        "\u0645\u0643\u062A\u0645\u0644\u0629": completedCount,
+        "\u0645\u0644\u063A\u064A\u0629": cancelledCount
+      });
+    }
+    const labelMap = {
+      size: "\u062E\u0637\u0623 \u0641\u064A \u0627\u0644\u0645\u0642\u0627\u0633",
+      color: "\u062E\u0637\u0623 \u0641\u064A \u0627\u0644\u0644\u0648\u0646",
+      delay: "\u062A\u0623\u062E\u0631 \u0627\u0644\u0634\u062D\u0646",
+      damage: "\u0643\u0633\u0631 \u0623\u062B\u0646\u0627\u0621 \u0627\u0644\u0646\u0642\u0644",
+      shortage: "\u0646\u0642\u0635 \u0641\u064A \u0627\u0644\u0643\u0645\u064A\u0629",
+      quality: "\u062C\u0648\u062F\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639",
+      other: "\u0623\u062E\u0631\u0649"
+    };
+    const colorMap = {
+      size: "#ef4444",
+      color: "#f97316",
+      delay: "#eab308",
+      damage: "#8b5cf6",
+      shortage: "#06b6d4",
+      quality: "#10b981",
+      other: "#6b7280"
+    };
+    const errorCounts = {
+      size: 0,
+      color: 0,
+      delay: 0,
+      damage: 0,
+      shortage: 0,
+      quality: 0,
+      other: 0
+    };
+    for (const c of complaintsList) {
+      errorCounts[c.type] = (errorCounts[c.type] ?? 0) + 1;
+    }
+    const errorBreakdown = Object.entries(errorCounts).map(([type, count]) => ({
+      name: labelMap[type] ?? type,
+      value: count,
+      color: colorMap[type] ?? "#6b7280"
+    }));
+    const deliveryTimeHistory = [];
+    for (let i = 7; i >= 0; i--) {
+      const startOfWeek = now - (i + 1) * 7 * MS_PER_DAY;
+      const endOfWeek = now - i * 7 * MS_PER_DAY;
+      const deliveredInWeek = packingOrdersList.filter(
+        (p) => p.deliveryStatus === "done" && p.updatedAt >= startOfWeek && p.updatedAt < endOfWeek
+      );
+      let avgTime = 0;
+      if (deliveredInWeek.length > 0) {
+        const totalTime = deliveredInWeek.reduce((sum, p) => sum + (p.updatedAt - p.createdAt), 0);
+        avgTime = Math.round(totalTime / deliveredInWeek.length / 36e4) / 10;
+      }
+      deliveryTimeHistory.push({
+        week: `\u0623\u0633\u0628\u0648\u0639 ${8 - i}`,
+        "\u0645\u062A\u0648\u0633\u0637": avgTime,
+        "\u0647\u062F\u0641": 72
+      });
+    }
+    return {
+      stages: [
+        { id: "approval", name: "\u0645\u0631\u062D\u0644\u0629 \u0627\u0644\u0645\u0648\u0627\u0641\u0642\u0629", avgTime: approvalAvgTime, throughput: approvalThroughput, errorRate: approvalErrorRate, bottleneck: false },
+        { id: "production", name: "\u0645\u0631\u062D\u0644\u0629 \u0627\u0644\u0625\u0646\u062A\u0627\u062C", avgTime: prodAvgTime, throughput: prodThroughput, errorRate: prodErrorRate, bottleneck: false },
+        { id: "qc", name: "\u0645\u0631\u0627\u0642\u0628\u0629 \u0627\u0644\u062C\u0648\u062F\u0629", avgTime: qcAvgTime, throughput: qcThroughput, errorRate: qcErrorRate, bottleneck: false },
+        { id: "packaging", name: "\u0627\u0644\u062A\u0639\u0628\u0626\u0629 \u0648\u0627\u0644\u062A\u063A\u0644\u064A\u0641", avgTime: packingAvgTime, throughput: packingThroughput, errorRate: packingErrorRate, bottleneck: false },
+        { id: "shipping", name: "\u0627\u0644\u0634\u062D\u0646 \u0648\u0627\u0644\u062A\u0648\u0635\u064A\u0644", avgTime: shippingAvgTime, throughput: shippingThroughput, errorRate: shippingErrorRate, bottleneck: false }
+      ],
+      weeklyTrend,
+      monthlyThroughput,
+      errorBreakdown,
+      deliveryTimeHistory
+    };
   })
 });
 
@@ -9174,7 +9404,9 @@ var ordersRouter = router({
       workOrderRows,
       qcRows,
       packingRows,
-      reviewRows
+      reviewRows,
+      doorOrderRows,
+      inventoryRows
     ] = await Promise.all([
       db.query.distributors.findMany({ columns: { status: true } }),
       db.query.complaints.findMany({ columns: { status: true } }),
@@ -9183,7 +9415,9 @@ var ordersRouter = router({
       db.query.packingOrders.findMany({ columns: { packingStatus: true } }),
       db.query.postOrderReviews.findMany({
         columns: { status: true, clientRating: true }
-      })
+      }),
+      db.query.doorOrders.findMany({ columns: { status: true } }),
+      db.query.inventoryItems.findMany({ columns: { currentQty: true, minQty: true } })
     ]);
     const activeDistributors = distributorRows.filter(
       (d) => d.status === "active"
@@ -9200,6 +9434,7 @@ var ordersRouter = router({
     const qcTotal = qcRows.length;
     const qcPass = qcRows.filter((q) => q.result === "pass").length;
     const qcPassRate = qcTotal > 0 ? Math.round(qcPass / qcTotal * 100) : 0;
+    const pendingQc = qcRows.filter((q) => q.result === "pending").length;
     const pendingPacking = packingRows.filter(
       (p) => p.packingStatus === "pending"
     ).length;
@@ -9209,6 +9444,13 @@ var ordersRouter = router({
     const avgReviewRating = reviewRows.length > 0 ? Math.round(
       reviewRows.reduce((sum, r) => sum + r.clientRating, 0) / reviewRows.length * 10
     ) / 10 : 0;
+    const activeOrdersCount = doorOrderRows.filter(
+      (o) => o.status !== "delivered" && o.status !== "cancelled"
+    ).length;
+    const inventoryTotalItems = inventoryRows.length;
+    const inventoryLowStockAlerts = inventoryRows.filter(
+      (item) => item.currentQty <= item.minQty
+    ).length;
     return {
       activeDistributors,
       pendingDistributors,
@@ -9216,9 +9458,13 @@ var ordersRouter = router({
       inProductionWorkOrders,
       qcPassRate,
       qcTotal,
+      pendingQc,
       pendingPacking,
       pendingReviews,
-      avgReviewRating
+      avgReviewRating,
+      activeOrdersCount,
+      inventoryTotalItems,
+      inventoryLowStockAlerts
     };
   }),
   // Update workflow stage (admin only)

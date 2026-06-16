@@ -666,16 +666,7 @@ export default function AdminWorkOrders() {
           <ClipboardList className="w-12 h-12 opacity-20 text-gray-400" />
           <p className="text-gray-400 text-sm">لا توجد أوامر تشغيل بعد</p>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => seedMutation.mutate()}
-              disabled={seedMutation.isPending}
-            >
-              {seedMutation.isPending
-                ? "جارٍ الإضافة..."
-                : "إضافة بيانات تجريبية"}
-            </Button>
+            {/* Seed button deleted for production */}
             <Button
               size="sm"
               style={{ background: "oklch(0.38 0.06 160)" }}

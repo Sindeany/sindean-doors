@@ -123,201 +123,7 @@ interface Notification {
   channel: "platform" | "whatsapp" | "email";
 }
 
-// ─── Mock Data ───────────────────────────────────────────────
-const revenueData = [
-  { month: "أكتوبر", monthEn: "Oct", revenue: 185000, orders: 42 },
-  { month: "نوفمبر", monthEn: "Nov", revenue: 220000, orders: 55 },
-  { month: "ديسمبر", monthEn: "Dec", revenue: 198000, orders: 48 },
-  { month: "يناير", monthEn: "Jan", revenue: 265000, orders: 63 },
-  { month: "فبراير", monthEn: "Feb", revenue: 310000, orders: 71 },
-  { month: "مارس", monthEn: "Mar", revenue: 289000, orders: 68 },
-  { month: "أبريل", monthEn: "Apr", revenue: 342000, orders: 79 },
-];
-
-const orderStatusData = [
-  { name: "مكتملة", nameEn: "Completed", value: 68, color: "#10B981" },
-  { name: "قيد التنفيذ", nameEn: "In Progress", value: 18, color: "#F59E0B" },
-  { name: "شحن", nameEn: "Shipped", value: 9, color: "#3B82F6" },
-  { name: "ملغاة", nameEn: "Cancelled", value: 5, color: "#EF4444" },
-];
-
-const initialQueue: WorkflowOrder[] = [
-  {
-    id: "WF001",
-    orderNumber: "SND-2026-0091",
-    distributor: "أحمد الزهراني",
-    company: "شركة النخبة",
-    city: "الرياض",
-    phone: "0501234567",
-    submittedAt: "2026-04-21 08:14",
-    status: "pending_approval",
-    items: [
-      {
-        name: "باب خشبي كلاسيكي",
-        qty: 4,
-        price: 3200,
-        size: "90×210",
-        color: "جوزي داكن",
-      },
-      {
-        name: "باب داخلي عصري",
-        qty: 3,
-        price: 2100,
-        size: "80×200",
-        color: "أبيض مطفي",
-      },
-    ],
-    total: 19100,
-    autoNotified: false,
-  },
-  {
-    id: "WF002",
-    orderNumber: "SND-2026-0090",
-    distributor: "محمد العمري",
-    company: "مؤسسة البناء الحديث",
-    city: "جدة",
-    phone: "0557891234",
-    submittedAt: "2026-04-21 07:42",
-    status: "pending_approval",
-    items: [
-      {
-        name: "باب خارجي فاخر",
-        qty: 2,
-        price: 4800,
-        size: "100×220",
-        color: "بلوط فاتح",
-      },
-    ],
-    total: 9600,
-    autoNotified: false,
-  },
-  {
-    id: "WF003",
-    orderNumber: "SND-2026-0089",
-    distributor: "فهد القحطاني",
-    company: "مجموعة الفيصل",
-    city: "مكة",
-    phone: "0551234567",
-    submittedAt: "2026-04-20 16:30",
-    status: "approved",
-    items: [
-      {
-        name: "باب خشبي كلاسيكي",
-        qty: 8,
-        price: 3200,
-        size: "90×210",
-        color: "ماهوجني",
-      },
-    ],
-    total: 25600,
-    autoNotified: true,
-  },
-  {
-    id: "WF004",
-    orderNumber: "SND-2026-0088",
-    distributor: "خالد الغامدي",
-    company: "شركة الإعمار",
-    city: "الدمام",
-    phone: "0509876543",
-    submittedAt: "2026-04-19 11:00",
-    status: "in_production",
-    items: [
-      {
-        name: "باب داخلي عصري",
-        qty: 4,
-        price: 2100,
-        size: "80×200",
-        color: "رمادي",
-      },
-    ],
-    total: 8400,
-    autoNotified: true,
-  },
-  {
-    id: "WF005",
-    orderNumber: "SND-2026-0087",
-    distributor: "سعد المالكي",
-    company: "شركة تطوير الخليج",
-    city: "أبها",
-    phone: "0504567890",
-    submittedAt: "2026-04-18 09:15",
-    status: "shipped",
-    items: [
-      {
-        name: "باب داخلي اقتصادي",
-        qty: 6,
-        price: 1400,
-        size: "80×200",
-        color: "أبيض",
-      },
-    ],
-    total: 8400,
-    autoNotified: true,
-  },
-];
-
-const initialNotifications: Notification[] = [
-  {
-    id: "N001",
-    type: "new_order",
-    title: "طلب جديد بانتظار موافقتك",
-    body: "SND-2026-0091 من شركة النخبة · 19,100 ر.س",
-    time: "منذ 8 دقائق",
-    read: false,
-    urgent: true,
-    channel: "platform",
-  },
-  {
-    id: "N002",
-    type: "new_order",
-    title: "طلب جديد بانتظار موافقتك",
-    body: "SND-2026-0090 من مؤسسة البناء الحديث · 9,600 ر.س",
-    time: "منذ 36 دقيقة",
-    read: false,
-    urgent: true,
-    channel: "platform",
-  },
-  {
-    id: "N003",
-    type: "new_complaint",
-    title: "شكوى جديدة تحتاج رداً",
-    body: "TKT-2026-0023 · كسر في شحنة شركة النخبة",
-    time: "منذ 1 ساعة",
-    read: false,
-    urgent: true,
-    channel: "platform",
-  },
-  {
-    id: "N004",
-    type: "new_distributor",
-    title: "طلب تسجيل موزع جديد",
-    body: "مؤسسة الوفاء للمقاولات · الرياض",
-    time: "منذ 2 ساعة",
-    read: false,
-    urgent: false,
-    channel: "platform",
-  },
-  {
-    id: "N005",
-    type: "delivered",
-    title: "تم تسليم الطلب بنجاح ✓",
-    body: "SND-2026-0085 تم تسليمه لشركة تطوير الخليج",
-    time: "منذ 5 ساعات",
-    read: true,
-    urgent: false,
-    channel: "whatsapp",
-  },
-  {
-    id: "N006",
-    type: "complaint_reply",
-    title: "رد موزع على شكوى",
-    body: "فهد القحطاني رد على TKT-2026-0021",
-    time: "منذ 6 ساعات",
-    read: true,
-    urgent: false,
-    channel: "platform",
-  },
-];
+// ─── Mock Data Removed for Production ───
 
 // ─── Workflow Status Config ───────────────────────────────────
 const WF_STATUS: Record<
@@ -1060,7 +866,7 @@ export default function AdminDashboard() {
   const isRtl = dir === "rtl";
   const [queue, setQueue] = useState<WorkflowOrder[]>([]);
   const [notifications, setNotifications] =
-    useState<Notification[]>(initialNotifications);
+    useState<Notification[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<WorkflowOrder | null>(
     null
   );
@@ -1137,18 +943,35 @@ export default function AdminDashboard() {
   const markAllRead = () =>
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
 
+  const revCurrent = stats?.thisMonthRevenue ?? 0;
+  const revPrev = stats?.monthly?.[5]?.revenue ?? 0;
+  const revTrendPct = revPrev > 0 ? ((revCurrent - revPrev) / revPrev) * 100 : 0;
+  const revTrend = revPrev > 0 ? (revCurrent >= revPrev ? ("up" as const) : ("down" as const)) : undefined;
+  const revTrendValue = revPrev > 0 ? `${revCurrent >= revPrev ? "+" : ""}${revTrendPct.toFixed(1)}%` : undefined;
+
+  const ordCurrent = stats?.thisMonthOrders ?? 0;
+  const ordPrev = stats?.monthly?.[5]?.orders ?? 0;
+  const ordTrendPct = ordPrev > 0 ? ((ordCurrent - ordPrev) / ordPrev) * 100 : 0;
+  const ordTrend = ordPrev > 0 ? (ordCurrent >= ordPrev ? ("up" as const) : ("down" as const)) : undefined;
+  const ordTrendValue = ordPrev > 0 ? `${ordCurrent >= ordPrev ? "+" : ""}${ordTrendPct.toFixed(1)}%` : undefined;
+
+  const avgCurrent = stats?.avgOrderValue ?? 0;
+  const avgPrev = (stats?.monthly?.[5]?.orders ?? 0) > 0 ? Math.round((stats?.monthly?.[5]?.revenue ?? 0) / (stats?.monthly?.[5]?.orders ?? 0)) : 0;
+  const avgTrend = avgPrev > 0 ? (avgCurrent >= avgPrev ? ("up" as const) : ("down" as const)) : undefined;
+  const avgTrendValue = avgPrev > 0 ? `${avgCurrent >= avgPrev ? "+" : ""}${(((avgCurrent - avgPrev) / avgPrev) * 100).toFixed(1)}%` : undefined;
+
   const kpiCards = [
     {
       label: isRtl ? "إجمالي الإيرادات" : "Total Revenue",
       value: stats?.thisMonthRevenue
         ? stats.thisMonthRevenue.toLocaleString()
-        : "—",
+        : "0",
       sub: isRtl ? "ر.س هذا الشهر" : "SAR this month",
       icon: <DollarSign className="w-5 h-5" />,
       color: "#10B981",
       bg: "#ECFDF5",
-      trend: "up" as const,
-      trendValue: "+18.4%",
+      trend: revTrend,
+      trendValue: revTrendValue,
     },
     {
       label: isRtl ? "إجمالي الطلبات" : "Total Orders",
@@ -1157,42 +980,38 @@ export default function AdminDashboard() {
       icon: <ShoppingBag className="w-5 h-5" />,
       color: "#3B82F6",
       bg: "#EFF6FF",
-      trend: "up" as const,
-      trendValue: "+16.2%",
+      trend: ordTrend,
+      trendValue: ordTrendValue,
     },
     {
       label: isRtl ? "الموزعون النشطون" : "Active Distributors",
-      value: kpis ? String(kpis.activeDistributors) : "—",
+      value: kpis ? String(kpis.activeDistributors) : "0",
       sub: isRtl
         ? `${kpis?.pendingDistributors ?? 0} طلب تسجيل معلق`
         : `${kpis?.pendingDistributors ?? 0} pending requests`,
       icon: <Users className="w-5 h-5" />,
       color: "#8B5CF6",
       bg: "#F5F3FF",
-      trend: "up" as const,
-      trendValue: kpis ? `${kpis.activeDistributors}` : "—",
     },
     {
       label: isRtl ? "الشكاوى المفتوحة" : "Open Complaints",
-      value: kpis ? String(kpis.openComplaints) : "—",
+      value: kpis ? String(kpis.openComplaints) : "0",
       sub: isRtl
         ? `${kpis?.inProductionWorkOrders ?? 0} أمر عمل قيد التنفيذ`
         : `${kpis?.inProductionWorkOrders ?? 0} work orders in progress`,
       icon: <AlertCircle className="w-5 h-5" />,
       color: "#EF4444",
       bg: "#FEF2F2",
-      trend: "down" as const,
-      trendValue: kpis ? `-${kpis.openComplaints}` : "—",
     },
     {
       label: isRtl ? "متوسط قيمة الطلب" : "Avg. Order Value",
-      value: stats?.avgOrderValue ? stats.avgOrderValue.toLocaleString() : "—",
+      value: stats?.avgOrderValue ? stats.avgOrderValue.toLocaleString() : "0",
       sub: isRtl ? "ر.س لكل طلب" : "SAR per order",
       icon: <BarChart2 className="w-5 h-5" />,
       color: "#F59E0B",
       bg: "#FFFBEB",
-      trend: "up" as const,
-      trendValue: "+2.1%",
+      trend: avgTrend,
+      trendValue: avgTrendValue,
     },
     {
       label: isRtl ? "الطلبات الكلية" : "All Orders",
@@ -1201,14 +1020,16 @@ export default function AdminDashboard() {
       icon: <Star className="w-5 h-5" />,
       color: "#F59E0B",
       bg: "#FFFBEB",
-      trend: "up" as const,
-      trendValue: "+0.2",
     },
   ];
 
-  // Order status distribution for pie chart (real data or mock fallback)
   const pieData = (() => {
-    if (!stats) return orderStatusData;
+    if (!stats) return [
+      { name: "معلّق", nameEn: "Pending", value: 0, color: "#F59E0B" },
+      { name: "قيد التنفيذ", nameEn: "In Progress", value: 0, color: "#8B5CF6" },
+      { name: "مكتمل", nameEn: "Completed", value: 0, color: "#10B981" },
+      { name: "ملغي", nameEn: "Cancelled", value: 0, color: "#EF4444" },
+    ];
     const sc = stats.statusCounts;
     return [
       {
@@ -1778,50 +1599,62 @@ export default function AdminDashboard() {
               {
                 href: "/admin/workflow",
                 icon: <GitBranch className="w-5 h-5" />,
-                label: "سير العمل الكامل",
-                sub: "15 مرحلة · 7 طلبات نشطة",
+                label: isRtl ? "سير العمل الكامل" : "Complete Workflow",
+                sub: isRtl
+                  ? `15 مرحلة · ${kpis?.activeOrdersCount ?? 0} طلبات نشطة`
+                  : `15 stages · ${kpis?.activeOrdersCount ?? 0} active orders`,
                 color: "oklch(0.55 0.15 250)",
-                badge: 7,
+                badge: kpis?.activeOrdersCount ?? 0,
               },
               {
                 href: "/admin/work-orders",
                 icon: <FileText className="w-5 h-5" />,
-                label: "أوامر التشغيل",
-                sub: "5 أقسام · توزيع الكميات",
+                label: isRtl ? "أوامر التشغيل" : "Work Orders",
+                sub: isRtl
+                  ? `5 أقسام · ${kpis?.inProductionWorkOrders ?? 0} أوامر نشطة`
+                  : `5 sections · ${kpis?.inProductionWorkOrders ?? 0} active orders`,
                 color: "oklch(0.50 0.16 200)",
-                badge: 4,
+                badge: kpis?.inProductionWorkOrders ?? 0,
               },
               {
                 href: "/admin/inventory",
                 icon: <Warehouse className="w-5 h-5" />,
-                label: "إدارة المخزون",
-                sub: "10 مواد · 3 تنبيهات",
+                label: isRtl ? "إدارة المخزون" : "Inventory",
+                sub: isRtl
+                  ? `${kpis?.inventoryTotalItems ?? 0} مواد · ${kpis?.inventoryLowStockAlerts ?? 0} تنبيهات`
+                  : `${kpis?.inventoryTotalItems ?? 0} items · ${kpis?.inventoryLowStockAlerts ?? 0} alerts`,
                 color: "oklch(0.50 0.14 140)",
-                badge: 3,
+                badge: kpis?.inventoryLowStockAlerts ?? 0,
               },
               {
                 href: "/admin/qc",
                 icon: <ShieldCheck className="w-5 h-5" />,
-                label: "فحص الجودة",
-                sub: "Incoming QC · Final QC · PO Matching",
+                label: isRtl ? "فحص الجودة" : "Quality Control",
+                sub: isRtl
+                  ? `فحص الوارد · النهائي · مطابقة PO (${kpis?.pendingQc ?? 0} معلق)`
+                  : `Incoming · Final · PO Match (${kpis?.pendingQc ?? 0} pending)`,
                 color: "oklch(0.55 0.15 140)",
-                badge: 2,
+                badge: kpis?.pendingQc ?? 0,
               },
               {
                 href: "/admin/packing",
                 icon: <Box className="w-5 h-5" />,
-                label: "التغليف والتسليم",
-                sub: "Packing · Delivery · Accounting",
+                label: isRtl ? "التغليف والتسليم" : "Packing & Delivery",
+                sub: isRtl
+                  ? `تغليف · تسليم · محاسبة (${kpis?.pendingPacking ?? 0} معلق)`
+                  : `Packing · Delivery · Accounting (${kpis?.pendingPacking ?? 0} pending)`,
                 color: "oklch(0.55 0.15 50)",
-                badge: 3,
+                badge: kpis?.pendingPacking ?? 0,
               },
               {
                 href: "/admin/post-review",
                 icon: <Star className="w-5 h-5" />,
-                label: "تقييم الطلبات",
-                sub: "Post-Order Review · تحليل الأداء",
+                label: isRtl ? "تقييم الطلبات" : "Post Review",
+                sub: isRtl
+                  ? `تقييم ما بعد الطلب · تحليل الأداء (${kpis?.pendingReviews ?? 0} معلق)`
+                  : `Post-Order Review · Analysis (${kpis?.pendingReviews ?? 0} pending)`,
                 color: "oklch(0.55 0.15 330)",
-                badge: 1,
+                badge: kpis?.pendingReviews ?? 0,
               },
             ].map(item => (
               <Link key={item.href} href={item.href}>
@@ -1880,7 +1713,7 @@ export default function AdminDashboard() {
             </div>
             <ResponsiveContainer width="100%" height={200}>
               <AreaChart
-                data={stats?.monthly ?? revenueData}
+                data={stats?.monthly ?? []}
                 margin={{ top: 5, right: 5, left: -20, bottom: 0 }}
               >
                 <defs>
