@@ -116,6 +116,9 @@ export interface WorkOrder {
   supervisorName: string;
   notes?: string;
   progressPercent: number;
+  cancelReason?: string;
+  cancelledBy?: string;
+  cancelledAt?: number;
 }
 
 // ─── إعدادات الأقسام ──────────────────────────────────────────
@@ -236,6 +239,9 @@ function mapDbWORow(row: any): WorkOrder {
     supervisorName: row.supervisorName ?? "",
     notes: row.notes ?? undefined,
     progressPercent: row.progressPercent,
+    cancelReason: row.cancelReason ?? undefined,
+    cancelledBy: row.cancelledBy ?? undefined,
+    cancelledAt: row.cancelledAt ?? undefined,
   };
 }
 

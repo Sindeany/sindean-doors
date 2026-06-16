@@ -95,6 +95,32 @@ function StatusBadge({ status }: { status: WorkOrderStatus }) {
 function OverviewTab({ wo }: { wo: WorkOrder }) {
   return (
     <div className="space-y-5">
+      {wo.status === "cancelled" && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-red-100 text-red-600 rounded-lg flex-shrink-0">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div className="flex-1 text-right">
+              <h4 className="text-sm font-bold text-red-800">أمر تشغيل ملغى</h4>
+              <div className="text-xs text-red-700 mt-1 space-y-1">
+                <p>
+                  <strong>القائم بالإلغاء:</strong> {wo.cancelledBy || "غير محدد"}
+                </p>
+                <p>
+                  <strong>تاريخ ووقت الإلغاء:</strong>{" "}
+                  {wo.cancelledAt
+                    ? new Date(wo.cancelledAt).toLocaleString("ar-SA")
+                    : "غير محدد"}
+                </p>
+              </div>
+              <div className="bg-white/60 rounded-lg p-2.5 mt-2 border border-red-100/50 text-xs text-red-800">
+                <strong>سبب الإلغاء:</strong> {wo.cancelReason || "غير محدد"}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Info Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
@@ -1234,8 +1260,13 @@ export default function WorkOrderModal({
 }) {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [localWO, setLocalWO] = useState<WorkOrder>(wo);
+  
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancelReasonInput, setCancelReasonInput] = useState("");
+  const [cancelledByInput, setCancelledByInput] = useState("المدير العام");
 
   const updateProgressMutation = trpc.workOrders.updateProgress.useMutation();
+  const cancelWO = trpc.workOrders.cancel.useMutation();
 
   function handleProgressSave(entries: ProgressEntry[]) {
     // تحديث deptTasks بالكميات الجديدة
@@ -1289,205 +1320,324 @@ export default function WorkOrderModal({
         : "oklch(0.50 0.16 250)";
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.55)" }}
-      onClick={onClose}
-    >
+    <>
       <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 16 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 16 }}
-        transition={{ duration: 0.2 }}
-        className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden"
-        onClick={e => e.stopPropagation()}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        style={{ background: "rgba(0,0,0,0.55)" }}
+        onClick={onClose}
       >
-        {/* ── Modal Header ─────────────────────────────────── */}
-        <div
-          className="flex items-center justify-between px-6 py-5 border-b border-gray-100 flex-shrink-0"
-          style={{ borderTop: `4px solid ${priorityColor}` }}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96, y: 16 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.96, y: 16 }}
+          transition={{ duration: 0.2 }}
+          className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden"
+          onClick={e => e.stopPropagation()}
         >
-          <div className="flex items-center gap-4">
-            <div
-              className="p-2.5 rounded-xl"
-              style={{ background: `${priorityColor}15`, color: priorityColor }}
-            >
-              <Wrench className="w-5 h-5" />
+          {/* ── Modal Header ─────────────────────────────────── */}
+          <div
+            className="flex items-center justify-between px-6 py-5 border-b border-gray-100 flex-shrink-0"
+            style={{ borderTop: `4px solid ${priorityColor}` }}
+          >
+            <div className="flex items-center gap-4">
+              <div
+                className="p-2.5 rounded-xl"
+                style={{ background: `${priorityColor}15`, color: priorityColor }}
+              >
+                <Wrench className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2
+                    className="font-bold text-gray-900 text-lg"
+                    style={{ fontFamily: "DM Serif Display, serif" }}
+                  >
+                    {wo.woNumber}
+                  </h2>
+                  <StatusBadge status={wo.status} />
+                  {wo.priority === "urgent" && (
+                    <span
+                      className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full"
+                      style={{
+                        background: "oklch(0.92 0.15 25)",
+                        color: "oklch(0.35 0.15 25)",
+                      }}
+                    >
+                      <Zap className="w-3 h-3" /> عاجل
+                    </span>
+                  )}
+                  {wo.priority === "vip" && (
+                    <span
+                      className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full"
+                      style={{
+                        background: "oklch(0.92 0.12 60)",
+                        color: "oklch(0.35 0.12 60)",
+                      }}
+                    >
+                      VIP
+                    </span>
+                  )}
+                </div>
+                <div className="text-sm text-gray-500 mt-0.5">
+                  {wo.distributorName} · {wo.totalDoors} باب ·{" "}
+                  {wo.totalValue.toLocaleString()} ر.س
+                </div>
+              </div>
             </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2
-                  className="font-bold text-gray-900 text-lg"
-                  style={{ fontFamily: "DM Serif Display, serif" }}
-                >
-                  {wo.woNumber}
-                </h2>
-                <StatusBadge status={wo.status} />
-                {wo.priority === "urgent" && (
-                  <span
-                    className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full"
-                    style={{
-                      background: "oklch(0.92 0.15 25)",
-                      color: "oklch(0.35 0.15 25)",
-                    }}
-                  >
-                    <Zap className="w-3 h-3" /> عاجل
-                  </span>
-                )}
-                {wo.priority === "vip" && (
-                  <span
-                    className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full"
-                    style={{
-                      background: "oklch(0.92 0.12 60)",
-                      color: "oklch(0.35 0.12 60)",
-                    }}
-                  >
-                    VIP
-                  </span>
-                )}
-              </div>
-              <div className="text-sm text-gray-500 mt-0.5">
-                {wo.distributorName} · {wo.totalDoors} باب ·{" "}
-                {wo.totalValue.toLocaleString()} ر.س
-              </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 hidden sm:flex hover:bg-green-50 hover:border-green-300 hover:text-green-700 transition-colors"
+                onClick={() => {
+                  printWorkOrder(localWO);
+                  toast.success("تم فتح نافذة الطباعة");
+                }}
+              >
+                <Printer className="w-4 h-4" /> طباعة PDF
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 hidden sm:flex hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors"
+                onClick={() => {
+                  printWorkOrder(localWO);
+                  toast.success("تم فتح نافذة التصدير");
+                }}
+              >
+                <Download className="w-4 h-4" /> تصدير
+              </Button>
+              <button
+                onClick={onClose}
+                className="p-2 rounded-xl hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 hidden sm:flex hover:bg-green-50 hover:border-green-300 hover:text-green-700 transition-colors"
-              onClick={() => {
-                printWorkOrder(localWO);
-                toast.success("تم فتح نافذة الطباعة");
-              }}
-            >
-              <Printer className="w-4 h-4" /> طباعة PDF
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 hidden sm:flex hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors"
-              onClick={() => {
-                printWorkOrder(localWO);
-                toast.success("تم فتح نافذة التصدير");
-              }}
-            >
-              <Download className="w-4 h-4" /> تصدير
-            </Button>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-xl hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-5 h-5" />
-            </button>
+
+          {/* ── Tabs ─────────────────────────────────────────── */}
+          <div className="flex items-center gap-1 px-6 py-3 border-b border-gray-100 flex-shrink-0 overflow-x-auto">
+            {TABS.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? "text-white shadow-sm"
+                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                }`}
+                style={
+                  activeTab === tab.id
+                    ? { background: "oklch(0.38 0.06 160)" }
+                    : {}
+                }
+              >
+                {tab.icon}
+                {tab.labelAr}
+              </button>
+            ))}
           </div>
-        </div>
 
-        {/* ── Tabs ─────────────────────────────────────────── */}
-        <div className="flex items-center gap-1 px-6 py-3 border-b border-gray-100 flex-shrink-0 overflow-x-auto">
-          {TABS.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
-                activeTab === tab.id
-                  ? "text-white shadow-sm"
-                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-              }`}
-              style={
-                activeTab === tab.id
-                  ? { background: "oklch(0.38 0.06 160)" }
-                  : {}
-              }
-            >
-              {tab.icon}
-              {tab.labelAr}
-            </button>
-          ))}
-        </div>
+          {/* ── Tab Content ──────────────────────────────────── */}
+          <div className="flex-1 overflow-y-auto p-6">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.15 }}
+              >
+                {activeTab === "overview" && <OverviewTab wo={localWO} />}
+                {activeTab === "doors" && <DoorsTab wo={localWO} />}
+                {activeTab === "departments" && <DepartmentsTab wo={localWO} />}
+                {activeTab === "progress" && (
+                  <ProgressTab wo={localWO} onSave={handleProgressSave} />
+                )}
+                {activeTab === "timeline" && <TimelineTab wo={localWO} />}
+              </motion.div>
+            </AnimatePresence>
+          </div>
 
-        {/* ── Tab Content ──────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-6">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.15 }}
-            >
-              {activeTab === "overview" && <OverviewTab wo={localWO} />}
-              {activeTab === "doors" && <DoorsTab wo={localWO} />}
-              {activeTab === "departments" && <DepartmentsTab wo={localWO} />}
-              {activeTab === "progress" && (
-                <ProgressTab wo={localWO} onSave={handleProgressSave} />
+          {/* ── Footer Actions ───────────────────────────────── */}
+          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50 flex-shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="text-xs text-gray-400">
+                صدر بتاريخ: {localWO.issuedAt} · المشرف: {localWO.supervisorName}
+              </div>
+              {localWO.progressPercent > 0 && (
+                <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-1.5">
+                  <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${localWO.progressPercent}%`,
+                        background:
+                          localWO.progressPercent === 100
+                            ? "oklch(0.50 0.16 140)"
+                            : "oklch(0.38 0.06 160)",
+                      }}
+                    />
+                  </div>
+                  <span className="text-xs font-bold text-gray-700">
+                    {localWO.progressPercent}%
+                  </span>
+                </div>
               )}
-              {activeTab === "timeline" && <TimelineTab wo={localWO} />}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-
-        {/* ── Footer Actions ───────────────────────────────── */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="text-xs text-gray-400">
-              صدر بتاريخ: {localWO.issuedAt} · المشرف: {localWO.supervisorName}
             </div>
-            {localWO.progressPercent > 0 && (
-              <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-1.5">
-                <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{
-                      width: `${localWO.progressPercent}%`,
-                      background:
-                        localWO.progressPercent === 100
-                          ? "oklch(0.50 0.16 140)"
-                          : "oklch(0.38 0.06 160)",
-                    }}
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 text-green-700 border-green-200 hover:bg-green-50 hover:border-green-400"
+                onClick={() => {
+                  printWorkOrder(localWO);
+                  toast.success("تم فتح نافذة الطباعة");
+                }}
+              >
+                <Printer className="w-4 h-4" />
+                طباعة PDF
+              </Button>
+              {localWO.status !== "completed" &&
+                localWO.status !== "cancelled" && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-400 hover:text-red-700"
+                      onClick={() => setShowCancelDialog(true)}
+                    >
+                      <X className="w-4 h-4" />
+                      إلغاء الأمر
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      onClick={() => setActiveTab("progress")}
+                    >
+                      <TrendingUp className="w-4 h-4" />
+                      تسجيل التقدم
+                    </Button>
+                  </>
+                )}
+              <Button variant="outline" size="sm" onClick={onClose}>
+                إغلاق
+              </Button>
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+
+      {/* ── Cancel Work Order Dialog ────────────────────────── */}
+      <AnimatePresence>
+        {showCancelDialog && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+            onClick={() => setShowCancelDialog(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md border border-gray-100 flex flex-col gap-4 text-right"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 border-b border-gray-100 pb-3">
+                <div className="p-2 bg-red-50 text-red-600 rounded-lg">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 text-base">إلغاء أمر التشغيل</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">يرجى ملء البيانات المطلوبة لإلغاء هذا الأمر نهائياً</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">
+                    القائم بالإلغاء (اسم المسؤول) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all"
+                    value={cancelledByInput}
+                    onChange={e => setCancelledByInput(e.target.value)}
+                    placeholder="مثال: المدير العام، أحمد الحربي"
+                    required
                   />
                 </div>
-                <span className="text-xs font-bold text-gray-700">
-                  {localWO.progressPercent}%
-                </span>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">
+                    سبب الإلغاء <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all min-h-[80px]"
+                    value={cancelReasonInput}
+                    onChange={e => setCancelReasonInput(e.target.value)}
+                    placeholder="يرجى كتابة سبب تفصيلي للإلغاء..."
+                    required
+                />
               </div>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1.5 text-green-700 border-green-200 hover:bg-green-50 hover:border-green-400"
-              onClick={() => {
-                printWorkOrder(localWO);
-                toast.success("تم فتح نافذة الطباعة");
-              }}
-            >
-              <Printer className="w-4 h-4" />
-              طباعة PDF
-            </Button>
-            {localWO.status !== "completed" &&
-              localWO.status !== "cancelled" && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5"
-                  onClick={() => setActiveTab("progress")}
-                >
-                  <TrendingUp className="w-4 h-4" />
-                  تسجيل التقدم
-                </Button>
-              )}
-            <Button variant="outline" size="sm" onClick={onClose}>
-              إغلاق
-            </Button>
-          </div>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-gray-100 pt-3 mt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowCancelDialog(false)}
+              >
+                تراجع
+              </Button>
+              <Button
+                size="sm"
+                className="bg-red-600 hover:bg-red-700 text-white gap-1.5"
+                disabled={!cancelledByInput.trim() || !cancelReasonInput.trim() || cancelWO.isPending}
+                onClick={() => {
+                  if (localWO.dbId) {
+                    cancelWO.mutate(
+                      {
+                        id: localWO.dbId,
+                        cancelReason: cancelReasonInput,
+                        cancelledBy: cancelledByInput,
+                      },
+                      {
+                        onSuccess: () => {
+                          const updated: WorkOrder = {
+                            ...localWO,
+                            status: "cancelled",
+                            cancelReason: cancelReasonInput,
+                            cancelledBy: cancelledByInput,
+                            cancelledAt: Date.now(),
+                          };
+                          setLocalWO(updated);
+                          onUpdate?.(updated);
+                          setShowCancelDialog(false);
+                          toast.success("تم إلغاء أمر التشغيل بنجاح");
+                        },
+                        onError: err => {
+                          toast.error(`فشل إلغاء أمر التشغيل: ${err.message}`);
+                        },
+                      }
+                    );
+                  }
+                }}
+              >
+                {cancelWO.isPending ? "جاري الإلغاء..." : "تأكيد الإلغاء"}
+              </Button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </>
+);
 }

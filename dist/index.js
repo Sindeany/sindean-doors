@@ -816,6 +816,9 @@ var workOrders = mysqlTable("work_orders", {
   supervisorName: varchar("supervisor_name", { length: 255 }).notNull().default(""),
   notes: text("notes"),
   progressPercent: int("progress_percent").notNull().default(0),
+  cancelReason: text("cancel_reason"),
+  cancelledBy: varchar("cancelled_by", { length: 255 }),
+  cancelledAt: bigint("cancelled_at", { mode: "number" }),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull()
 });
@@ -5631,6 +5634,23 @@ var workOrdersRouter = router({
   // ── تحديث الحالة فقط ─────────────────────────────────────
   updateStatus: adminProcedure.input(z16.object({ id: z16.number(), status: woStatusEnum })).mutation(async ({ input }) => {
     await db.update(schema_exports.workOrders).set({ status: input.status, updatedAt: Date.now() }).where(eq17(schema_exports.workOrders.id, input.id));
+    return { success: true };
+  }),
+  // ── إلغاء أمر التشغيل مع تسجيل السبب والقائم بالإلغاء ووقتها ────
+  cancel: adminProcedure.input(
+    z16.object({
+      id: z16.number(),
+      cancelReason: z16.string().min(1, "\u0633\u0628\u0628 \u0627\u0644\u0625\u0644\u063A\u0627\u0621 \u0645\u0637\u0644\u0648\u0628"),
+      cancelledBy: z16.string().min(1, "\u0627\u0633\u0645 \u0627\u0644\u0642\u0627\u0626\u0645 \u0628\u0627\u0644\u0625\u0644\u063A\u0627\u0621 \u0645\u0637\u0644\u0648\u0628")
+    })
+  ).mutation(async ({ input }) => {
+    await db.update(schema_exports.workOrders).set({
+      status: "cancelled",
+      cancelReason: input.cancelReason,
+      cancelledBy: input.cancelledBy,
+      cancelledAt: Date.now(),
+      updatedAt: Date.now()
+    }).where(eq17(schema_exports.workOrders.id, input.id));
     return { success: true };
   }),
   // ── بيانات تجريبية ───────────────────────────────────────

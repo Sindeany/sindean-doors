@@ -816,6 +816,9 @@ export const workOrders = mysqlTable("work_orders", {
     .default(""),
   notes: text("notes"),
   progressPercent: int("progress_percent").notNull().default(0),
+  cancelReason: text("cancel_reason"),
+  cancelledBy: varchar("cancelled_by", { length: 255 }),
+  cancelledAt: bigint("cancelled_at", { mode: "number" }),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
 });

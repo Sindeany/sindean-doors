@@ -104,6 +104,29 @@ export const workOrdersRouter = router({
       return { success: true };
     }),
 
+  // ── إلغاء أمر التشغيل مع تسجيل السبب والقائم بالإلغاء ووقتها ────
+  cancel: adminProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        cancelReason: z.string().min(1, "سبب الإلغاء مطلوب"),
+        cancelledBy: z.string().min(1, "اسم القائم بالإلغاء مطلوب"),
+      })
+    )
+    .mutation(async ({ input }) => {
+      await db
+        .update(schema.workOrders)
+        .set({
+          status: "cancelled",
+          cancelReason: input.cancelReason,
+          cancelledBy: input.cancelledBy,
+          cancelledAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+        .where(eq(schema.workOrders.id, input.id));
+      return { success: true };
+    }),
+
   // ── بيانات تجريبية ───────────────────────────────────────
   seed: adminProcedure.mutation(async () => {
     const now = Date.now();
