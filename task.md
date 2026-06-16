@@ -5,9 +5,8 @@
 - [ ] تعديل الواجهة الأمامية للوحة الأدمن (Frontend UI):
   - [ ] تفعيل زر الحذف للموزعين في `AdminDistributors.tsx` وربطه بالـ `deleteMutation`
   - [ ] تفعيل زر الحذف لطلبات الموزعين في `AdminDistributorOrders.tsx` وربطه بالخادم
-- [ ] التحقق والتشغيل:
-  - [ ] تشغيل فحص سلامة الأكواد `pnpm run check`
-  - [ ] تشغيل البناء المحلي للتأكد من نجاح التجميع `pnpm run build:local`
+- [x] المرحلة 4: الاختبارات والتحقق (Testing & Build Verification)
+  - [x] إنشاء ملف اختبارات التكامل `server/bom.test.ts` واختبار العمليات الحسابية والتخزين
+  - [x] تشغيل فحص الأنواع `pnpm run check` وبناء المشروع محلياً `pnpm run build:local`
 - [ ] النشر والرفع:
   - [ ] عمل commit و push للتعديلات ومزامنتها على GitHub
-

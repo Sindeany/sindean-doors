@@ -1081,3 +1081,55 @@ export const productionLines = mysqlTable("production_lines", {
 });
 export type ProductionLine = typeof productionLines.$inferSelect;
 export type NewProductionLine = typeof productionLines.$inferInsert;
+
+// ── Bill of Materials (BOM) — قائمة المواد ──────────────────────────────────────
+export const bom = mysqlTable("bom", {
+  id: int("id").primaryKey().autoincrement(),
+  productId: int("product_id").notNull(),                              // references products.id
+  version: int("version").notNull().default(1),
+  description: text("description"),
+  totalCost: float("total_cost").notNull().default(0),                 // Total cost in SAR
+  laborCost: float("labor_cost").notNull().default(0),                 // Labor cost in SAR
+  wastagePercentage: float("wastage_percentage").notNull().default(5), // Wastage percentage (e.g. 5 for 5%)
+  status: mysqlEnum("bom_status", ["draft", "active", "archived"]).notNull().default("draft"),
+  createdBy: int("created_by"),                                        // creator user ID (admin)
+  approvedBy: int("approved_by"),                                      // approver user ID (admin)
+  approvedAt: bigint("approved_at", { mode: "number" }),
+  notes: text("notes"),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+});
+
+export type BOMRow = typeof bom.$inferSelect;
+export type NewBOM = typeof bom.$inferInsert;
+
+export const bomItems = mysqlTable("bom_items", {
+  id: int("id").primaryKey().autoincrement(),
+  bomId: int("bom_id").notNull(),                                      // references bom.id
+  itemId: int("item_id").notNull(),                                    // references inventory_items.id
+  quantity: float("quantity").notNull(),                               // Required quantity of the component
+  unitCost: float("unit_cost").notNull(),                              // Component cost per unit in SAR at the time of creation
+  totalCost: float("total_cost").notNull(),                             // quantity * unitCost
+  notes: text("notes"),
+  lineNumber: int("line_number"),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+});
+
+export type BOMItemRow = typeof bomItems.$inferSelect;
+export type NewBOMItem = typeof bomItems.$inferInsert;
+
+export const bomHistory = mysqlTable("bom_history", {
+  id: int("id").primaryKey().autoincrement(),
+  bomId: int("bom_id").notNull(),                                      // references bom.id
+  changeType: mysqlEnum("bom_change_type", ["created", "updated", "approved", "archived"]).notNull(),
+  changedBy: int("changed_by").notNull(),                              // user ID (admin)
+  oldData: json("old_data"),
+  newData: json("new_data"),
+  changeReason: text("change_reason"),
+  changedAt: bigint("changed_at", { mode: "number" }).notNull(),
+});
+
+export type BOMHistoryRow = typeof bomHistory.$inferSelect;
+export type NewBOMHistory = typeof bomHistory.$inferInsert;
+

@@ -91,8 +91,8 @@ import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 
 // server/routers.ts
-import { TRPCError as TRPCError13 } from "@trpc/server";
-import { z as z26 } from "zod/v4";
+import { TRPCError as TRPCError14 } from "@trpc/server";
+import { z as z27 } from "zod/v4";
 
 // server/db.ts
 import { drizzle } from "drizzle-orm/mysql2";
@@ -103,6 +103,9 @@ var schema_exports = {};
 __export(schema_exports, {
   accounts: () => accounts,
   adminSessions: () => adminSessions,
+  bom: () => bom,
+  bomHistory: () => bomHistory,
+  bomItems: () => bomItems,
   complaintMessages: () => complaintMessages,
   complaints: () => complaints,
   decisionLog: () => decisionLog,
@@ -1035,6 +1038,57 @@ var productionLines = mysqlTable("production_lines", {
   notes: text("notes"),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull()
 });
+var bom = mysqlTable("bom", {
+  id: int("id").primaryKey().autoincrement(),
+  productId: int("product_id").notNull(),
+  // references products.id
+  version: int("version").notNull().default(1),
+  description: text("description"),
+  totalCost: float("total_cost").notNull().default(0),
+  // Total cost in SAR
+  laborCost: float("labor_cost").notNull().default(0),
+  // Labor cost in SAR
+  wastagePercentage: float("wastage_percentage").notNull().default(5),
+  // Wastage percentage (e.g. 5 for 5%)
+  status: mysqlEnum("bom_status", ["draft", "active", "archived"]).notNull().default("draft"),
+  createdBy: int("created_by"),
+  // creator user ID (admin)
+  approvedBy: int("approved_by"),
+  // approver user ID (admin)
+  approvedAt: bigint("approved_at", { mode: "number" }),
+  notes: text("notes"),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull()
+});
+var bomItems = mysqlTable("bom_items", {
+  id: int("id").primaryKey().autoincrement(),
+  bomId: int("bom_id").notNull(),
+  // references bom.id
+  itemId: int("item_id").notNull(),
+  // references inventory_items.id
+  quantity: float("quantity").notNull(),
+  // Required quantity of the component
+  unitCost: float("unit_cost").notNull(),
+  // Component cost per unit in SAR at the time of creation
+  totalCost: float("total_cost").notNull(),
+  // quantity * unitCost
+  notes: text("notes"),
+  lineNumber: int("line_number"),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull()
+});
+var bomHistory = mysqlTable("bom_history", {
+  id: int("id").primaryKey().autoincrement(),
+  bomId: int("bom_id").notNull(),
+  // references bom.id
+  changeType: mysqlEnum("bom_change_type", ["created", "updated", "approved", "archived"]).notNull(),
+  changedBy: int("changed_by").notNull(),
+  // user ID (admin)
+  oldData: json("old_data"),
+  newData: json("new_data"),
+  changeReason: text("change_reason"),
+  changedAt: bigint("changed_at", { mode: "number" }).notNull()
+});
 
 // server/db.ts
 var useSsl = process.env.DB_SSL === "true";
@@ -1046,7 +1100,7 @@ var pool = mysql.createPool({
 var db = drizzle(pool, { schema: schema_exports, mode: "default" });
 
 // server/routers.ts
-import { eq as eq26, desc as desc22, like as like4, ne as ne2 } from "drizzle-orm";
+import { eq as eq27, desc as desc23, like as like4, ne as ne2 } from "drizzle-orm";
 
 // server/trpc.ts
 import { initTRPC, TRPCError } from "@trpc/server";
@@ -1336,7 +1390,7 @@ var suppliersRouter = router({
     }).optional()
   ).query(async ({ input }) => {
     const suppliers2 = await db.query.suppliers.findMany({
-      orderBy: (s, { desc: desc23 }) => [desc23(s.createdAt)],
+      orderBy: (s, { desc: desc24 }) => [desc24(s.createdAt)],
       where: input?.status ? eq3(schema_exports.suppliers.status, input.status) : void 0
     });
     return suppliers2.map(({ passwordHash: _, ...s }) => s);
@@ -1361,7 +1415,7 @@ var suppliersRouter = router({
     const supplier = ctx.supplier;
     const invitations = await db.query.rfqInvitations.findMany({
       where: eq3(schema_exports.rfqInvitations.supplierId, supplier.id),
-      orderBy: (inv, { desc: desc23 }) => [desc23(inv.sentAt)]
+      orderBy: (inv, { desc: desc24 }) => [desc24(inv.sentAt)]
     });
     const result = await Promise.all(
       invitations.map(async (inv) => {
@@ -1378,7 +1432,7 @@ var suppliersRouter = router({
     const supplier = ctx.supplier;
     const quotes = await db.query.supplierQuotes.findMany({
       where: eq3(schema_exports.supplierQuotes.supplierId, supplier.id),
-      orderBy: (q, { desc: desc23 }) => [desc23(q.createdAt)]
+      orderBy: (q, { desc: desc24 }) => [desc24(q.createdAt)]
     });
     const result = await Promise.all(
       quotes.map(async (q) => {
@@ -1395,7 +1449,7 @@ var suppliersRouter = router({
     const supplier = ctx.supplier;
     return db.query.purchaseOrders.findMany({
       where: eq3(schema_exports.purchaseOrders.supplierId, supplier.id),
-      orderBy: (po, { desc: desc23 }) => [desc23(po.createdAt)]
+      orderBy: (po, { desc: desc24 }) => [desc24(po.createdAt)]
     });
   }),
   // ── تأكيد أمر الشراء من المورد ──────────────────────────────────────────
@@ -1536,7 +1590,7 @@ var rfqRouter = router({
     }).optional()
   ).query(async ({ input }) => {
     const rfqs2 = await db.query.rfqs.findMany({
-      orderBy: (r, { desc: desc23 }) => [desc23(r.createdAt)],
+      orderBy: (r, { desc: desc24 }) => [desc24(r.createdAt)],
       where: input?.status ? eq4(schema_exports.rfqs.status, input.status) : void 0
     });
     const result = await Promise.all(
@@ -1924,7 +1978,7 @@ ${i + 1}. ${q.supplierName}
     }).optional()
   ).query(async ({ input }) => {
     const pos = await db.query.purchaseOrders.findMany({
-      orderBy: (po, { desc: desc23 }) => [desc23(po.createdAt)],
+      orderBy: (po, { desc: desc24 }) => [desc24(po.createdAt)],
       where: input?.status ? eq4(schema_exports.purchaseOrders.status, input.status) : void 0
     });
     const result = await Promise.all(
@@ -9189,6 +9243,318 @@ async function sendOrderConfirmation(data) {
   }
 }
 
+// server/bom.router.ts
+import { z as z26 } from "zod/v4";
+import { eq as eq26, and as and14, desc as desc22, sql as sql5 } from "drizzle-orm";
+import { TRPCError as TRPCError13 } from "@trpc/server";
+var createBOMSchema = z26.object({
+  productId: z26.number().int(),
+  description: z26.string().optional(),
+  laborCost: z26.number().min(0).default(0),
+  wastagePercentage: z26.number().min(0).max(100).default(5),
+  items: z26.array(
+    z26.object({
+      itemId: z26.number().int(),
+      // references inventoryItems.id
+      quantity: z26.number().min(1e-3),
+      notes: z26.string().optional()
+    })
+  ).min(1, "\u064A\u062C\u0628 \u0625\u0636\u0627\u0641\u0629 \u0645\u0627\u062F\u0629 \u0648\u0627\u062D\u062F\u0629 \u0639\u0644\u0649 \u0627\u0644\u0623\u0642\u0644"),
+  notes: z26.string().optional()
+});
+var updateBOMSchema = z26.object({
+  bomId: z26.number().int(),
+  description: z26.string().optional(),
+  laborCost: z26.number().min(0).optional(),
+  wastagePercentage: z26.number().min(0).max(100).optional(),
+  items: z26.array(
+    z26.object({
+      itemId: z26.number().int(),
+      quantity: z26.number().min(1e-3),
+      notes: z26.string().optional()
+    })
+  ).optional(),
+  notes: z26.string().optional()
+});
+var bomRouter = router({
+  // ── إنشاء قائمة مواد جديدة ────────────────────────────────
+  create: adminProcedure.input(createBOMSchema).mutation(async ({ input }) => {
+    const product = await db.query.products.findFirst({
+      where: eq26(schema_exports.products.id, input.productId)
+    });
+    if (!product) {
+      throw new TRPCError13({
+        code: "NOT_FOUND",
+        message: "\u0627\u0644\u0645\u0646\u062A\u062C \u0627\u0644\u0645\u062D\u062F\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F \u0641\u064A \u0627\u0644\u0646\u0638\u0627\u0645"
+      });
+    }
+    let totalItemsCost = 0;
+    const resolvedItems = [];
+    for (let i = 0; i < input.items.length; i++) {
+      const item = input.items[i];
+      const invItem = await db.query.inventoryItems.findFirst({
+        where: eq26(schema_exports.inventoryItems.id, item.itemId)
+      });
+      if (!invItem) {
+        throw new TRPCError13({
+          code: "NOT_FOUND",
+          message: `\u0627\u0644\u0645\u0627\u062F\u0629 \u0627\u0644\u062E\u0627\u0645 \u0630\u0627\u062A \u0627\u0644\u0645\u0639\u0631\u0641 ${item.itemId} \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629 \u0641\u064A \u0627\u0644\u0645\u062E\u0632\u0646`
+        });
+      }
+      const itemCost = invItem.unitCost * item.quantity;
+      totalItemsCost += itemCost;
+      resolvedItems.push({
+        itemId: item.itemId,
+        quantity: item.quantity,
+        unitCost: invItem.unitCost,
+        totalCost: itemCost,
+        notes: item.notes || null,
+        lineNumber: i + 1
+      });
+    }
+    const wastageAmount = totalItemsCost * (input.wastagePercentage / 100);
+    const totalCost = totalItemsCost + wastageAmount + input.laborCost;
+    const now = Date.now();
+    const [bomResult] = await db.insert(schema_exports.bom).values({
+      productId: input.productId,
+      version: 1,
+      description: input.description || null,
+      totalCost,
+      laborCost: input.laborCost,
+      wastagePercentage: input.wastagePercentage,
+      status: "draft",
+      createdBy: 1,
+      // معرف افتراضي للأدمن
+      notes: input.notes || null,
+      createdAt: now,
+      updatedAt: now
+    });
+    const bomId = bomResult.insertId;
+    for (const item of resolvedItems) {
+      await db.insert(schema_exports.bomItems).values({
+        bomId,
+        itemId: item.itemId,
+        quantity: item.quantity,
+        unitCost: item.unitCost,
+        totalCost: item.totalCost,
+        notes: item.notes,
+        lineNumber: item.lineNumber,
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+    await db.insert(schema_exports.bomHistory).values({
+      bomId,
+      changeType: "created",
+      changedBy: 1,
+      newData: {
+        productId: input.productId,
+        laborCost: input.laborCost,
+        wastagePercentage: input.wastagePercentage,
+        totalCost,
+        itemsCount: resolvedItems.length
+      },
+      changedAt: now
+    });
+    return { bomId, totalCost };
+  }),
+  // ── جلب كل قوائم المواد ────────────────────────────────────
+  list: adminProcedure.input(
+    z26.object({
+      status: z26.enum(["draft", "active", "archived"]).optional(),
+      search: z26.string().optional()
+    }).optional()
+  ).query(async ({ input }) => {
+    let query = db.select({
+      id: schema_exports.bom.id,
+      productId: schema_exports.bom.productId,
+      productName: schema_exports.products.name,
+      productSku: schema_exports.products.sku,
+      version: schema_exports.bom.version,
+      totalCost: schema_exports.bom.totalCost,
+      laborCost: schema_exports.bom.laborCost,
+      wastagePercentage: schema_exports.bom.wastagePercentage,
+      status: schema_exports.bom.status,
+      createdAt: schema_exports.bom.createdAt
+    }).from(schema_exports.bom).innerJoin(schema_exports.products, eq26(schema_exports.bom.productId, schema_exports.products.id));
+    const conditions = [];
+    if (input?.status) {
+      conditions.push(eq26(schema_exports.bom.status, input.status));
+    }
+    if (input?.search) {
+      conditions.push(
+        sql5`${schema_exports.products.name} LIKE ${`%${input.search}%`} OR ${schema_exports.products.sku} LIKE ${`%${input.search}%`}`
+      );
+    }
+    if (conditions.length > 0) {
+      query = query.where(and14(...conditions));
+    }
+    return query.orderBy(desc22(schema_exports.bom.createdAt));
+  }),
+  // ── الحصول على BOM مفصل مع بنوده ──────────────────────────
+  get: adminProcedure.input(z26.object({ bomId: z26.number().int() })).query(async ({ input }) => {
+    const bomData = await db.select({
+      id: schema_exports.bom.id,
+      productId: schema_exports.bom.productId,
+      productName: schema_exports.products.name,
+      productSku: schema_exports.products.sku,
+      version: schema_exports.bom.version,
+      description: schema_exports.bom.description,
+      totalCost: schema_exports.bom.totalCost,
+      laborCost: schema_exports.bom.laborCost,
+      wastagePercentage: schema_exports.bom.wastagePercentage,
+      status: schema_exports.bom.status,
+      createdBy: schema_exports.bom.createdBy,
+      approvedBy: schema_exports.bom.approvedBy,
+      approvedAt: schema_exports.bom.approvedAt,
+      notes: schema_exports.bom.notes,
+      createdAt: schema_exports.bom.createdAt,
+      updatedAt: schema_exports.bom.updatedAt
+    }).from(schema_exports.bom).innerJoin(schema_exports.products, eq26(schema_exports.bom.productId, schema_exports.products.id)).where(eq26(schema_exports.bom.id, input.bomId)).limit(1);
+    if (!bomData.length) {
+      throw new TRPCError13({
+        code: "NOT_FOUND",
+        message: "\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u0648\u0627\u062F \u0627\u0644\u0645\u0637\u0644\u0648\u0628\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629"
+      });
+    }
+    const items = await db.select({
+      id: schema_exports.bomItems.id,
+      bomId: schema_exports.bomItems.bomId,
+      itemId: schema_exports.bomItems.itemId,
+      quantity: schema_exports.bomItems.quantity,
+      unitCost: schema_exports.bomItems.unitCost,
+      totalCost: schema_exports.bomItems.totalCost,
+      notes: schema_exports.bomItems.notes,
+      lineNumber: schema_exports.bomItems.lineNumber,
+      itemName: schema_exports.inventoryItems.name,
+      itemCode: schema_exports.inventoryItems.code,
+      itemUnit: schema_exports.inventoryItems.unit,
+      itemCategory: schema_exports.inventoryItems.category,
+      currentStock: schema_exports.inventoryItems.currentQty
+    }).from(schema_exports.bomItems).innerJoin(schema_exports.inventoryItems, eq26(schema_exports.bomItems.itemId, schema_exports.inventoryItems.id)).where(eq26(schema_exports.bomItems.bomId, input.bomId)).orderBy(schema_exports.bomItems.lineNumber);
+    return {
+      ...bomData[0],
+      items
+    };
+  }),
+  // ── تحديث قائمة مواد موجودة ──────────────────────────────
+  update: adminProcedure.input(updateBOMSchema).mutation(async ({ input }) => {
+    const current = await db.query.bom.findFirst({
+      where: eq26(schema_exports.bom.id, input.bomId)
+    });
+    if (!current) {
+      throw new TRPCError13({
+        code: "NOT_FOUND",
+        message: "\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u0648\u0627\u062F \u0627\u0644\u0645\u0637\u0644\u0648\u0628\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629"
+      });
+    }
+    const now = Date.now();
+    const updateData = {
+      updatedAt: now
+    };
+    if (input.description !== void 0) updateData.description = input.description;
+    if (input.notes !== void 0) updateData.notes = input.notes;
+    if (input.laborCost !== void 0) updateData.laborCost = input.laborCost;
+    if (input.wastagePercentage !== void 0) updateData.wastagePercentage = input.wastagePercentage;
+    const laborCost = input.laborCost !== void 0 ? input.laborCost : current.laborCost;
+    const wastagePercentage = input.wastagePercentage !== void 0 ? input.wastagePercentage : current.wastagePercentage;
+    if (input.items !== void 0) {
+      await db.delete(schema_exports.bomItems).where(eq26(schema_exports.bomItems.bomId, input.bomId));
+      let totalItemsCost = 0;
+      const resolvedItems = [];
+      for (let i = 0; i < input.items.length; i++) {
+        const item = input.items[i];
+        const invItem = await db.query.inventoryItems.findFirst({
+          where: eq26(schema_exports.inventoryItems.id, item.itemId)
+        });
+        if (!invItem) {
+          throw new TRPCError13({
+            code: "NOT_FOUND",
+            message: `\u0627\u0644\u0645\u0627\u062F\u0629 \u0630\u0627\u062A \u0627\u0644\u0645\u0639\u0631\u0641 ${item.itemId} \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629 \u0628\u0627\u0644\u0645\u062E\u0632\u0646`
+          });
+        }
+        const itemCost = invItem.unitCost * item.quantity;
+        totalItemsCost += itemCost;
+        resolvedItems.push({
+          itemId: item.itemId,
+          quantity: item.quantity,
+          unitCost: invItem.unitCost,
+          totalCost: itemCost,
+          notes: item.notes || null,
+          lineNumber: i + 1
+        });
+      }
+      const wastageAmount = totalItemsCost * (wastagePercentage / 100);
+      const totalCost = totalItemsCost + wastageAmount + laborCost;
+      updateData.totalCost = totalCost;
+      for (const item of resolvedItems) {
+        await db.insert(schema_exports.bomItems).values({
+          bomId: input.bomId,
+          itemId: item.itemId,
+          quantity: item.quantity,
+          unitCost: item.unitCost,
+          totalCost: item.totalCost,
+          notes: item.notes,
+          lineNumber: item.lineNumber,
+          createdAt: now,
+          updatedAt: now
+        });
+      }
+    } else if (input.laborCost !== void 0 || input.wastagePercentage !== void 0) {
+      const currentItems = await db.select({ totalCost: schema_exports.bomItems.totalCost }).from(schema_exports.bomItems).where(eq26(schema_exports.bomItems.bomId, input.bomId));
+      const totalItemsCost = currentItems.reduce((sum, item) => sum + item.totalCost, 0);
+      const wastageAmount = totalItemsCost * (wastagePercentage / 100);
+      updateData.totalCost = totalItemsCost + wastageAmount + laborCost;
+    }
+    await db.update(schema_exports.bom).set(updateData).where(eq26(schema_exports.bom.id, input.bomId));
+    await db.insert(schema_exports.bomHistory).values({
+      bomId: input.bomId,
+      changeType: "updated",
+      changedBy: 1,
+      oldData: current,
+      newData: updateData,
+      changedAt: now
+    });
+    return { success: true };
+  }),
+  // ── اعتماد قائمة المواد ────────────────────────────────────
+  approve: adminProcedure.input(z26.object({ bomId: z26.number().int() })).mutation(async ({ input }) => {
+    const now = Date.now();
+    await db.update(schema_exports.bom).set({
+      status: "active",
+      approvedBy: 1,
+      approvedAt: now,
+      updatedAt: now
+    }).where(eq26(schema_exports.bom.id, input.bomId));
+    await db.insert(schema_exports.bomHistory).values({
+      bomId: input.bomId,
+      changeType: "approved",
+      changedBy: 1,
+      changedAt: now
+    });
+    return { success: true };
+  }),
+  // ── أرشفة قائمة المواد ─────────────────────────────────────
+  archive: adminProcedure.input(z26.object({ bomId: z26.number().int() })).mutation(async ({ input }) => {
+    const now = Date.now();
+    await db.update(schema_exports.bom).set({
+      status: "archived",
+      updatedAt: now
+    }).where(eq26(schema_exports.bom.id, input.bomId));
+    await db.insert(schema_exports.bomHistory).values({
+      bomId: input.bomId,
+      changeType: "archived",
+      changedBy: 1,
+      changedAt: now
+    });
+    return { success: true };
+  }),
+  // ── الحصول على السجل التاريخي لقائمة المواد ─────────────────
+  getHistory: adminProcedure.input(z26.object({ bomId: z26.number().int() })).query(async ({ input }) => {
+    return db.select().from(schema_exports.bomHistory).where(eq26(schema_exports.bomHistory.bomId, input.bomId)).orderBy(desc22(schema_exports.bomHistory.changedAt));
+  })
+});
+
 // server/routers.ts
 async function notifyOwner(title, content) {
   const apiUrl = process.env.BUILT_IN_FORGE_API_URL;
@@ -9235,18 +9601,18 @@ function getStatusForStage(stage) {
 var ordersRouter = router({
   // Create a new door order
   create: publicProcedure.input(
-    z26.object({
-      customerName: z26.string().min(1),
-      customerPhone: z26.string().min(1),
-      customerEmail: z26.string().email().optional().or(z26.literal("")),
-      productId: z26.string(),
-      productName: z26.string(),
-      selections: z26.record(z26.string(), z26.string()),
-      subSelections: z26.record(z26.string(), z26.unknown()),
-      dimensions: z26.record(z26.string(), z26.unknown()).optional(),
-      basePrice: z26.number().default(0),
-      totalPrice: z26.number().default(0),
-      notes: z26.string().optional()
+    z27.object({
+      customerName: z27.string().min(1),
+      customerPhone: z27.string().min(1),
+      customerEmail: z27.string().email().optional().or(z27.literal("")),
+      productId: z27.string(),
+      productName: z27.string(),
+      selections: z27.record(z27.string(), z27.string()),
+      subSelections: z27.record(z27.string(), z27.unknown()),
+      dimensions: z27.record(z27.string(), z27.unknown()).optional(),
+      basePrice: z27.number().default(0),
+      totalPrice: z27.number().default(0),
+      notes: z27.string().optional()
     })
   ).mutation(async ({ input }) => {
     const now = Date.now();
@@ -9294,8 +9660,8 @@ var ordersRouter = router({
   }),
   // Get all orders (admin only)
   list: adminProcedure.input(
-    z26.object({
-      status: z26.enum([
+    z27.object({
+      status: z27.enum([
         "new",
         "reviewing",
         "confirmed",
@@ -9307,8 +9673,8 @@ var ordersRouter = router({
     }).optional()
   ).query(async ({ input }) => {
     const orders = await db.query.doorOrders.findMany({
-      orderBy: [desc22(schema_exports.doorOrders.createdAt)],
-      where: input?.status ? eq26(schema_exports.doorOrders.status, input.status) : ne2(schema_exports.doorOrders.status, "cancelled")
+      orderBy: [desc23(schema_exports.doorOrders.createdAt)],
+      where: input?.status ? eq27(schema_exports.doorOrders.status, input.status) : ne2(schema_exports.doorOrders.status, "cancelled")
     });
     return orders.map((order) => ({
       ...order,
@@ -9319,7 +9685,7 @@ var ordersRouter = router({
   // Dashboard statistics (admin only)
   stats: adminProcedure.query(async () => {
     const allOrders = await db.query.doorOrders.findMany({
-      orderBy: [desc22(schema_exports.doorOrders.createdAt)]
+      orderBy: [desc23(schema_exports.doorOrders.createdAt)]
     });
     const statusCounts = {};
     for (const o of allOrders)
@@ -9388,11 +9754,11 @@ var ordersRouter = router({
     };
   }),
   // Get single order (admin only)
-  getById: adminProcedure.input(z26.object({ id: z26.number() })).query(async ({ input }) => {
+  getById: adminProcedure.input(z27.object({ id: z27.number() })).query(async ({ input }) => {
     const order = await db.query.doorOrders.findFirst({
-      where: eq26(schema_exports.doorOrders.id, input.id)
+      where: eq27(schema_exports.doorOrders.id, input.id)
     });
-    if (!order) throw new TRPCError13({ code: "NOT_FOUND" });
+    if (!order) throw new TRPCError14({ code: "NOT_FOUND" });
     return {
       ...order,
       sizes: typeof order.dimensions === "string" ? JSON.parse(order.dimensions || "{}") : order.dimensions,
@@ -9401,9 +9767,9 @@ var ordersRouter = router({
   }),
   // Update order status (admin only)
   updateStatus: adminProcedure.input(
-    z26.object({
-      id: z26.number(),
-      status: z26.enum([
+    z27.object({
+      id: z27.number(),
+      status: z27.enum([
         "new",
         "reviewing",
         "confirmed",
@@ -9414,7 +9780,7 @@ var ordersRouter = router({
       ])
     })
   ).mutation(async ({ input }) => {
-    await db.update(schema_exports.doorOrders).set({ status: input.status, updatedAt: Date.now() }).where(eq26(schema_exports.doorOrders.id, input.id));
+    await db.update(schema_exports.doorOrders).set({ status: input.status, updatedAt: Date.now() }).where(eq27(schema_exports.doorOrders.id, input.id));
     if (input.status === "confirmed") {
       createInvoiceFromOrder(input.id).catch(() => {
       });
@@ -9422,8 +9788,8 @@ var ordersRouter = router({
     return { success: true };
   }),
   // Delete order (admin only)
-  delete: adminProcedure.input(z26.object({ id: z26.number() })).mutation(async ({ input }) => {
-    await db.delete(schema_exports.doorOrders).where(eq26(schema_exports.doorOrders.id, input.id));
+  delete: adminProcedure.input(z27.object({ id: z27.number() })).mutation(async ({ input }) => {
+    await db.delete(schema_exports.doorOrders).where(eq27(schema_exports.doorOrders.id, input.id));
     return { success: true };
   }),
   // Dashboard KPIs — aggregates from all admin tables
@@ -9499,27 +9865,27 @@ var ordersRouter = router({
   }),
   // Update workflow stage (admin only)
   updateWorkflowStage: adminProcedure.input(
-    z26.object({
-      id: z26.number(),
-      workflowStage: z26.string().max(50),
-      workflowStagesData: z26.record(
-        z26.string(),
-        z26.object({
-          status: z26.enum([
+    z27.object({
+      id: z27.number(),
+      workflowStage: z27.string().max(50),
+      workflowStagesData: z27.record(
+        z27.string(),
+        z27.object({
+          status: z27.enum([
             "pending",
             "in_progress",
             "done",
             "blocked",
             "skipped"
           ]),
-          completedAt: z26.string().optional(),
-          notes: z26.string().optional(),
-          assignee: z26.string().optional()
+          completedAt: z27.string().optional(),
+          notes: z27.string().optional(),
+          assignee: z27.string().optional()
         })
       ).optional(),
-      priority: z26.enum(["normal", "urgent", "vip"]).optional(),
-      expectedDelivery: z26.number().optional(),
-      totalDoors: z26.number().int().optional()
+      priority: z27.enum(["normal", "urgent", "vip"]).optional(),
+      expectedDelivery: z27.number().optional(),
+      totalDoors: z27.number().int().optional()
     })
   ).mutation(async ({ input }) => {
     await db.update(schema_exports.doorOrders).set({
@@ -9535,9 +9901,9 @@ var ordersRouter = router({
         totalDoors: input.totalDoors
       },
       updatedAt: Date.now()
-    }).where(eq26(schema_exports.doorOrders.id, input.id));
+    }).where(eq27(schema_exports.doorOrders.id, input.id));
     const doorOrder = await db.query.doorOrders.findFirst({
-      where: eq26(schema_exports.doorOrders.id, input.id)
+      where: eq27(schema_exports.doorOrders.id, input.id)
     });
     if (doorOrder && doorOrder.notes && doorOrder.notes.startsWith("DIST_ORDER_ID:")) {
       const prefix = doorOrder.notes.split(" - ")[0];
@@ -9562,7 +9928,7 @@ var ordersRouter = router({
           } else {
             parentStatus = "confirmed";
           }
-          await db.update(schema_exports.distributorOrders).set({ status: parentStatus, updatedAt: Date.now() }).where(eq26(schema_exports.distributorOrders.id, distOrderId));
+          await db.update(schema_exports.distributorOrders).set({ status: parentStatus, updatedAt: Date.now() }).where(eq27(schema_exports.distributorOrders.id, distOrderId));
         }
       }
     }
@@ -9570,18 +9936,18 @@ var ordersRouter = router({
   }),
   // Update payment status (admin only)
   updatePaymentStatus: adminProcedure.input(
-    z26.object({
-      id: z26.number(),
-      paymentStatus: z26.enum(["unpaid", "partial", "paid"])
+    z27.object({
+      id: z27.number(),
+      paymentStatus: z27.enum(["unpaid", "partial", "paid"])
     })
   ).mutation(async ({ input }) => {
-    await db.update(schema_exports.doorOrders).set({ paymentStatus: input.paymentStatus, updatedAt: Date.now() }).where(eq26(schema_exports.doorOrders.id, input.id));
+    await db.update(schema_exports.doorOrders).set({ paymentStatus: input.paymentStatus, updatedAt: Date.now() }).where(eq27(schema_exports.doorOrders.id, input.id));
     return { success: true };
   }),
   // ── Analytics — رسوم بيانية محسّنة ──────────────────────────────────────
   analytics: adminProcedure.query(async () => {
     const allOrders = await db.query.doorOrders.findMany({
-      orderBy: [desc22(schema_exports.doorOrders.createdAt)]
+      orderBy: [desc23(schema_exports.doorOrders.createdAt)]
     });
     const now = Date.now();
     const MS_PER_DAY = 864e5;
@@ -9687,6 +10053,7 @@ var ordersRouter = router({
   })
 });
 var appRouter = router({
+  bom: bomRouter,
   orders: ordersRouter,
   suppliers: suppliersRouter,
   rfq: rfqRouter,

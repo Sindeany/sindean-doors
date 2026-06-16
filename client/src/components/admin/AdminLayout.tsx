@@ -113,6 +113,14 @@ const NAV_ITEMS: NavItem[] = [
     path: "/admin/production",
   },
   {
+    id: "bom",
+    labelAr: "جدول المكونات (BOM)",
+    labelEn: "Bill of Materials",
+    labelZh: "物料清单",
+    icon: <ClipboardList className="w-5 h-5" />,
+    path: "/admin/bom",
+  },
+  {
     id: "inventory",
     labelAr: "إدارة المخزون",
     labelEn: "Inventory",

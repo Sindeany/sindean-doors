@@ -54,6 +54,7 @@ import AdminPackingDelivery from "./pages/admin/AdminPackingDelivery";
 import AdminPostOrderReview from "./pages/admin/AdminPostOrderReview";
 import AdminWorkOrders from "./pages/admin/AdminWorkOrders";
 import AdminProductionPlanning from "./pages/admin/AdminProductionPlanning";
+import AdminBOM from "./pages/admin/AdminBOM";
 import AdminInventory from "./pages/admin/AdminInventory";
 import AdminStocktaking from "./pages/admin/AdminStocktaking";
 import AdminProductOptions from "./pages/admin/AdminProductOptions";
@@ -168,6 +169,7 @@ function Router() {
         <Route path={"/admin/post-review"} component={AdminPostOrderReview} />
         <Route path={"/admin/work-orders"} component={AdminWorkOrders} />
         <Route path={"/admin/production"} component={AdminProductionPlanning} />
+        <Route path={"/admin/bom"} component={AdminBOM} />
         <Route path={"/admin/bi"} component={AdminBIDashboard} />
         <Route path={"/admin/inventory"} component={AdminInventory} />
         <Route path={"/admin/stocktaking"} component={AdminStocktaking} />

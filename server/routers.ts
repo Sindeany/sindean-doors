@@ -32,6 +32,7 @@ import { productionRouter } from "./production.router.js";
 import { analyticsRouter } from "./analytics.router.js";
 import { customerPortalRouter } from "./customer-portal.router.js";
 import { sendOrderConfirmation } from "./email.js";
+import { bomRouter } from "./bom.router.js";
 
 // ── Owner Notification Helper ────────────────────────────────────────────────
 async function notifyOwner(title: string, content: string): Promise<void> {
@@ -658,6 +659,7 @@ const ordersRouter = router({
 
 // ── App Router ───────────────────────────────────────────────────────────────
 export const appRouter = router({
+  bom: bomRouter,
   orders: ordersRouter,
   suppliers: suppliersRouter,
   rfq: rfqRouter,
