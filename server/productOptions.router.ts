@@ -484,6 +484,22 @@ const distributorOrdersRouter = router({
       return { success: true };
     }),
 
+  delete: adminProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const order = await db.query.distributorOrders.findFirst({
+        where: eq(schema.distributorOrders.id, input.id),
+      });
+      if (!order) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "الطلب غير موجود" });
+      }
+      await db
+        .delete(schema.distributorOrders)
+        .where(eq(schema.distributorOrders.id, input.id));
+      return { success: true };
+    }),
+
+
   // ── رفع وتحليل ملف Excel ──────────────────────────────────────────────────
   parseExcel: publicProcedure
     .input(

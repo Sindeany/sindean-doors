@@ -2,11 +2,12 @@ import { useState, useMemo, Fragment } from "react";
 import { trpc } from "@/lib/trpc";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import AdminLayout from "@/components/admin/AdminLayout";
 import { KEY_TRANSLATIONS } from "@/components/distributor/NewOrderWizard";
 import {
   Package, Truck, CheckCircle2, Clock, XCircle, Search, Filter,
-  ChevronDown, ChevronUp, CheckCheck, RotateCcw, Activity
+  ChevronDown, ChevronUp, CheckCheck, RotateCcw, Activity, Trash2
 } from "lucide-react";
 
 // NOTE: duplicated from AdminDistributorProfile.tsx — extract to shared helper later
@@ -120,6 +121,15 @@ export default function AdminDistributorOrders() {
   const utils = trpc.useUtils();
   const updateStatusMutation = trpc.distributorOrders.updateStatus.useMutation({
     onSuccess: () => { utils.distributorOrders.list.invalidate(); },
+  });
+  const deleteMutation = trpc.distributorOrders.delete.useMutation({
+    onSuccess: () => {
+      utils.distributorOrders.list.invalidate();
+      toast.success("تم حذف الطلب بنجاح");
+    },
+    onError: (err) => {
+      toast.error(err.message || "حدث خطأ أثناء حذف الطلب");
+    }
   });
 
   const orders = useMemo(() => {
@@ -316,31 +326,48 @@ export default function AdminDistributorOrders() {
                           )}
                         </div>
 
-                        <div className="flex gap-2 pt-2">
-                          {o.status === "pending" && (
-                            <>
-                              <Button
-                                className="text-xs h-7 gap-1 text-white"
-                                style={{ background: "#10B981" }}
-                                disabled={updateStatusMutation.isPending}
-                                onClick={(e) => { e.stopPropagation(); if (o.dbId != null) updateStatusMutation.mutate({ id: o.dbId, status: "confirmed" }); }}
-                              >
-                                <CheckCircle2 className="w-3.5 h-3.5" /> موافقة
+                        <div className="flex gap-2 pt-2 items-center justify-between w-full">
+                          <div className="flex gap-2">
+                            {o.status === "pending" && (
+                              <>
+                                <Button
+                                  className="text-xs h-7 gap-1 text-white"
+                                  style={{ background: "#10B981" }}
+                                  disabled={updateStatusMutation.isPending}
+                                  onClick={(e) => { e.stopPropagation(); if (o.dbId != null) updateStatusMutation.mutate({ id: o.dbId, status: "confirmed" }); }}
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> موافقة
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  className="text-xs h-7 gap-1"
+                                  style={{ color: "#EF4444", borderColor: "#EF4444" }}
+                                  disabled={updateStatusMutation.isPending}
+                                  onClick={(e) => { e.stopPropagation(); if (o.dbId != null) updateStatusMutation.mutate({ id: o.dbId, status: "cancelled" }); }}
+                                >
+                                  <XCircle className="w-3.5 h-3.5" /> رفض
+                                </Button>
+                              </>
+                            )}
+                            {o.status === "shipped" && (
+                              <Button className="text-xs h-7 gap-1 text-white" style={{ background: "#10B981" }} onClick={(e) => { e.stopPropagation(); if (o.dbId != null) updateStatusMutation.mutate({ id: o.dbId, status: "delivered" }); }}>
+                                <CheckCheck className="w-3.5 h-3.5" /> تأكيد التسليم
                               </Button>
-                              <Button
-                                variant="outline"
-                                className="text-xs h-7 gap-1"
-                                style={{ color: "#EF4444", borderColor: "#EF4444" }}
-                                disabled={updateStatusMutation.isPending}
-                                onClick={(e) => { e.stopPropagation(); if (o.dbId != null) updateStatusMutation.mutate({ id: o.dbId, status: "cancelled" }); }}
-                              >
-                                <XCircle className="w-3.5 h-3.5" /> رفض
-                              </Button>
-                            </>
-                          )}
-                          {o.status === "shipped" && (
-                            <Button className="text-xs h-7 gap-1 text-white" style={{ background: "#10B981" }} onClick={(e) => { e.stopPropagation(); if (o.dbId != null) updateStatusMutation.mutate({ id: o.dbId, status: "delivered" }); }}>
-                              <CheckCheck className="w-3.5 h-3.5" /> تأكيد التسليم
+                            )}
+                          </div>
+                          {o.dbId != null && (
+                            <Button
+                              variant="ghost"
+                              className="text-xs h-7 gap-1 text-red-500 hover:text-red-700 hover:bg-red-50"
+                              disabled={deleteMutation.isPending}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm(`هل أنت متأكد من حذف الطلب "${o.id}" بالكامل؟`)) {
+                                  deleteMutation.mutate({ id: o.dbId! });
+                                }
+                              }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> حذف الطلب
                             </Button>
                           )}
                         </div>

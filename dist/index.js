@@ -2607,6 +2607,16 @@ var distributorOrdersRouter = router({
     await db.update(schema_exports.distributorOrders).set({ paymentStatus: input.paymentStatus, updatedAt: Date.now() }).where(eq6(schema_exports.distributorOrders.id, input.orderId));
     return { success: true };
   }),
+  delete: adminProcedure.input(z5.object({ id: z5.number().int() })).mutation(async ({ input }) => {
+    const order = await db.query.distributorOrders.findFirst({
+      where: eq6(schema_exports.distributorOrders.id, input.id)
+    });
+    if (!order) {
+      throw new TRPCError5({ code: "NOT_FOUND", message: "\u0627\u0644\u0637\u0644\u0628 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+    }
+    await db.delete(schema_exports.distributorOrders).where(eq6(schema_exports.distributorOrders.id, input.id));
+    return { success: true };
+  }),
   // ── رفع وتحليل ملف Excel ──────────────────────────────────────────────────
   parseExcel: publicProcedure.input(
     z5.object({

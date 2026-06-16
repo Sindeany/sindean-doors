@@ -39,6 +39,7 @@ import {
   Globe,
   Calendar,
   Lock,
+  Trash2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -1342,6 +1343,8 @@ function SetPasswordModal({
 // ─── Main Page ────────────────────────────────────────────────
 export default function AdminDistributors() {
   const [, navigate] = useLocation();
+  const { dir } = useLanguage();
+  const isRtl = dir === "rtl";
   const [distributors, setDistributors] = useState<Distributor[]>([]);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<DistributorStatus | "all">(
@@ -1840,18 +1843,57 @@ export default function AdminDistributors() {
                               </button>
                             </Link>
                             {dbRecord && (
-                              <button
-                                onClick={() =>
-                                  setSetPasswordTarget({
-                                    id: dbRecord.id,
-                                    name: d.name,
-                                  })
-                                }
-                                className="p-1.5 rounded-lg hover:bg-amber-50 transition-colors"
-                                title="تعيين كلمة المرور"
-                              >
-                                <Lock className="w-4 h-4 text-amber-500" />
-                              </button>
+                              <>
+                                <button
+                                  onClick={() =>
+                                    setSetPasswordTarget({
+                                      id: dbRecord.id,
+                                      name: d.name,
+                                    })
+                                  }
+                                  className="p-1.5 rounded-lg hover:bg-amber-50 transition-colors"
+                                  title="تعيين كلمة المرور"
+                                >
+                                  <Lock className="w-4 h-4 text-amber-500" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (
+                                      confirm(
+                                        isRtl
+                                          ? `هل أنت متأكد من حذف الموزع "${d.name}"؟`
+                                          : `Are you sure you want to delete distributor "${d.name}"?`
+                                      )
+                                    ) {
+                                      deleteMutation.mutate(
+                                        { id: dbRecord.id },
+                                        {
+                                          onSuccess: () => {
+                                            toast.success(
+                                              isRtl
+                                                ? "تم حذف الموزع بنجاح"
+                                                : "Distributor deleted successfully"
+                                            );
+                                          },
+                                          onError: (err) => {
+                                            toast.error(
+                                              err.message ||
+                                                (isRtl
+                                                  ? "فشل في حذف الموزع"
+                                                  : "Failed to delete distributor")
+                                            );
+                                          },
+                                        }
+                                      );
+                                    }
+                                  }}
+                                  className="p-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                                  title={isRtl ? "حذف" : "Delete"}
+                                >
+                                  <Trash2 className="w-4 h-4 text-red-500" />
+                                </button>
+                              </>
                             )}
                           </div>
                         </td>
