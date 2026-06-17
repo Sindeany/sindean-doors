@@ -217,6 +217,22 @@ export const WO_STATUS: Record<
   },
 };
 
+function safeParseJsonArray(val: any): any[] {
+  if (Array.isArray(val)) {
+    return val;
+  }
+  if (typeof val === "string" && val.trim() !== "") {
+    try {
+      const parsed = JSON.parse(val);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      console.error("Failed to parse JSON field:", e);
+      return [];
+    }
+  }
+  return [];
+}
+
 // ─── تحويل صف DB إلى WorkOrder ─────────────────────────────────────────────
 function mapDbWORow(row: any): WorkOrder {
   return {
@@ -234,8 +250,8 @@ function mapDbWORow(row: any): WorkOrder {
     orderType: row.orderType as "standard" | "custom",
     totalDoors: row.totalDoors,
     totalValue: row.totalValue,
-    doors: Array.isArray(row.doors) ? row.doors : [],
-    deptTasks: Array.isArray(row.deptTasks) ? row.deptTasks : [],
+    doors: safeParseJsonArray(row.doors),
+    deptTasks: safeParseJsonArray(row.deptTasks),
     supervisorName: row.supervisorName ?? "",
     notes: row.notes ?? undefined,
     progressPercent: row.progressPercent,
