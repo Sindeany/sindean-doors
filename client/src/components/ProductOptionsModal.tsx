@@ -522,7 +522,7 @@ function OptionGroup({
       {/* Color swatches */}
       {option.type === "color" ? (
         <div className="flex flex-wrap gap-2.5">
-          {option.values.map(val => (
+          {[...option.values].sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0)).map(val => (
             <ColorSwatch
               key={val.id}
               value={val}
@@ -535,7 +535,7 @@ function OptionGroup({
       ) : (
         /* Text chips */
         <div className="flex flex-wrap gap-2">
-          {option.values.map(val => {
+          {[...option.values].sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0)).map(val => {
             const isSelected = selectedId === val.id;
             const displayLabel = isRTL ? val.label : (val.labelEn ?? val.label);
             return (

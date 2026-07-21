@@ -587,9 +587,9 @@ function StepProductOptions({
   sections: any[];
 }) {
   // Filter out dimensions section — handled in StepDimensions
-  const displaySections = sections.filter(
-    (s: any) => s.enabled !== false && s.id !== "dimensions"
-  );
+  const displaySections = sections
+    .filter((s: any) => s.enabled !== false && s.id !== "dimensions")
+    .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
 
   const getSelected = (groupId: string): string[] =>
     form.options[groupId] ?? [];
@@ -649,12 +649,14 @@ function StepProductOptions({
         للعميل عند الطلب. إذا تركت خياراً فارغاً ستُعرض جميع قيمه للعميل.
       </p>
       {displaySections.map((section: any) => {
-        const sectionGroups = (section.groups ?? []).filter(
-          (g: any) =>
-            g.enabled !== false &&
-            g.type !== "section_header" &&
-            g.type !== "text_input"
-        );
+        const sectionGroups = (section.groups ?? [])
+          .filter(
+            (g: any) =>
+              g.enabled !== false &&
+              g.type !== "section_header" &&
+              g.type !== "text_input"
+          )
+          .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
         if (sectionGroups.length === 0) return null;
         return (
           <div
@@ -667,9 +669,9 @@ function StepProductOptions({
             </h4>
             {sectionGroups.map((group: any) => {
               const selected = getSelected(group.id);
-              const enabledValues = (group.values ?? []).filter(
-                (v: any) => v.enabled !== false
-              );
+              const enabledValues = (group.values ?? [])
+                .filter((v: any) => v.enabled !== false)
+                .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
               const isToggle = group.type === "toggle";
               const isEnabled = selected.includes("enabled");
               const allSelected =
@@ -895,9 +897,9 @@ function StepDimensions({
           const isEnabled = selected.includes("enabled");
 
           if (group.type === "chips") {
-            const enabledValues = (group.values ?? []).filter(
-              (v: any) => v.enabled !== false
-            );
+            const enabledValues = (group.values ?? [])
+              .filter((v: any) => v.enabled !== false)
+              .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
             return (
               <div
                 key={group.id}

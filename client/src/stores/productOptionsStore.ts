@@ -30,6 +30,7 @@ export interface OptionValue {
   image?: string;
   description?: string;
   hasSubOptions?: boolean; // يحتوي خيارات فرعية
+  order?: number;
   subOptions?: SubOption[];
 }
 
@@ -597,7 +598,7 @@ function loadSections(): Section[] {
 
 function mergeWithDefaults(saved: Section[]): Section[] {
   const savedMap = new Map(saved.map((s) => [s.id, s]));
-  return DEFAULT_SECTIONS.map((def) => {
+  const mergedDefaults = DEFAULT_SECTIONS.map((def) => {
     const sv = savedMap.get(def.id);
     if (!sv) return def;
     // Merge groups
@@ -619,6 +620,13 @@ function mergeWithDefaults(saved: Section[]): Section[] {
     const extraGroups = sv.groups.filter((g) => !def.groups.find((dg) => dg.id === g.id));
     return { ...def, ...sv, groups: [...mergedGroups, ...extraGroups] };
   });
+
+  // Add custom sections that don't exist in defaults
+  const extraSections = saved.filter(
+    (s) => !DEFAULT_SECTIONS.some((def) => def.id === s.id)
+  );
+
+  return [...mergedDefaults, ...extraSections];
 }
 
 function saveSections(sections: Section[]): void {
@@ -712,6 +720,12 @@ export const productOptionsStore = {
     this._notify();
   },
 
+  deleteSection(sectionId: string): void {
+    _sections = _sections.filter((s) => s.id !== sectionId);
+    saveSections(_sections);
+    this._notify();
+  },
+
   addGroup(sectionId: string, group: OptionGroup): void {
     _sections = _sections.map((s) =>
       s.id === sectionId ? { ...s, groups: [...s.groups, group] } : s
@@ -775,6 +789,45 @@ export const productOptionsStore = {
       ...s,
       order: orderedIds.indexOf(s.id),
     }));
+    saveSections(_sections);
+    this._notify();
+  },
+
+  reorderGroups(sectionId: string, orderedGroupIds: string[]): void {
+    _sections = _sections.map((s) =>
+      s.id === sectionId
+        ? {
+            ...s,
+            groups: s.groups.map((g) => ({
+              ...g,
+              order: orderedGroupIds.indexOf(g.id),
+            })),
+          }
+        : s
+    );
+    saveSections(_sections);
+    this._notify();
+  },
+
+  reorderValues(sectionId: string, groupId: string, orderedValueIds: string[]): void {
+    _sections = _sections.map((s) =>
+      s.id === sectionId
+        ? {
+            ...s,
+            groups: s.groups.map((g) =>
+              g.id === groupId
+                ? {
+                    ...g,
+                    values: g.values.map((v) => ({
+                      ...v,
+                      order: orderedValueIds.indexOf(v.id),
+                    })),
+                  }
+                : g
+            ),
+          }
+        : s
+    );
     saveSections(_sections);
     this._notify();
   },
