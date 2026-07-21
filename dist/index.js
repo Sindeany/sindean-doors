@@ -155,7 +155,8 @@ import {
   float,
   boolean,
   tinyint,
-  timestamp
+  timestamp,
+  index
 } from "drizzle-orm/mysql-core";
 var doorOrders = mysqlTable("door_orders", {
   id: int("id").autoincrement().primaryKey(),
@@ -793,6 +794,7 @@ var packingOrders = mysqlTable("packing_orders", {
 });
 var workOrders = mysqlTable("work_orders", {
   id: int("id").primaryKey().autoincrement(),
+  orderId: int("order_id").notNull().references(() => doorOrders.id, { onDelete: "cascade" }),
   woNumber: varchar("wo_number", { length: 50 }).notNull().unique(),
   poNumber: varchar("po_number", { length: 50 }).notNull(),
   distributorName: varchar("distributor_name", { length: 255 }).notNull(),
@@ -824,7 +826,9 @@ var workOrders = mysqlTable("work_orders", {
   cancelledAt: bigint("cancelled_at", { mode: "number" }),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull()
-});
+}, (table) => ({
+  orderIdIdx: index("order_id_idx").on(table.orderId)
+}));
 var decisionLog = mysqlTable("decision_log", {
   id: int("id").primaryKey().autoincrement(),
   orderNumber: varchar("order_number", { length: 50 }).notNull(),
@@ -4098,7 +4102,7 @@ var categoryEnum = z10.enum([
 var itemInput = z10.object({
   code: z10.string().min(1).max(100),
   name: z10.string().min(1).max(255),
-  nameEn: z10.string().max(255).optional(),
+  nameEn: z10.string().max(255).nullable().optional(),
   category: categoryEnum,
   unit: z10.string().min(1).max(50),
   currentQty: z10.number().int().min(0),
@@ -4107,11 +4111,11 @@ var itemInput = z10.object({
   reorderQty: z10.number().int().min(0),
   unitCost: z10.number().min(0),
   supplier: z10.string().max(255).default(""),
-  supplierPhone: z10.string().max(50).optional(),
+  supplierPhone: z10.string().max(50).nullable().optional(),
   location: z10.string().max(255).default(""),
-  lastReceived: z10.string().max(10).optional(),
-  lastConsumed: z10.string().max(10).optional(),
-  notes: z10.string().optional()
+  lastReceived: z10.string().max(10).nullable().optional(),
+  lastConsumed: z10.string().max(10).nullable().optional(),
+  notes: z10.string().nullable().optional()
 });
 function calcStatus(qty, minQty) {
   if (qty <= 0) return "out_of_stock";
@@ -4335,17 +4339,17 @@ var distInput = z11.object({
   region: z11.string().max(100).default(""),
   phone: z11.string().min(1).max(50),
   email: z11.string().email().max(255),
-  whatsapp: z11.string().max(50).optional(),
-  website: z11.string().max(255).optional(),
-  commercialReg: z11.string().max(50).optional(),
-  vatNumber: z11.string().max(20).optional(),
-  bankName: z11.string().max(255).optional(),
-  bankIban: z11.string().max(40).optional(),
+  whatsapp: z11.string().max(50).nullable().optional(),
+  website: z11.string().max(255).nullable().optional(),
+  commercialReg: z11.string().max(50).nullable().optional(),
+  vatNumber: z11.string().max(20).nullable().optional(),
+  bankName: z11.string().max(255).nullable().optional(),
+  bankIban: z11.string().max(40).nullable().optional(),
   status: z11.enum(["active", "pending", "suspended", "rejected"]).default("pending"),
   tier: z11.enum(["bronze", "silver", "gold", "platinum"]).default("bronze"),
   joinDate: z11.string().max(10),
-  contractStart: z11.string().max(10).optional(),
-  contractEnd: z11.string().max(10).optional(),
+  contractStart: z11.string().max(10).nullable().optional(),
+  contractEnd: z11.string().max(10).nullable().optional(),
   creditLimit: z11.number().int().min(0).default(5e4),
   discountRate: z11.number().int().min(0).max(100).default(5),
   totalOrders: z11.number().int().min(0).default(0),
@@ -4353,8 +4357,8 @@ var distInput = z11.object({
   avgRating: z11.number().min(0).max(5).default(0),
   pendingOrders: z11.number().int().min(0).default(0),
   openComplaints: z11.number().int().min(0).default(0),
-  notes: z11.string().optional(),
-  adminNotes: z11.string().optional(),
+  notes: z11.string().nullable().optional(),
+  adminNotes: z11.string().nullable().optional(),
   password: z11.string().min(8).optional()
   // كلمة مرور اختيارية — تُشفَّر بـ bcrypt قبل الحفظ
 });
@@ -5627,6 +5631,7 @@ var workOrdersRouter = router({
     z16.object({
       woNumber: z16.string().min(1),
       poNumber: z16.string().min(1),
+      orderId: z16.number().int(),
       distributorName: z16.string().min(1),
       distributorPhone: z16.string().default(""),
       issuedAt: z16.number(),
@@ -5648,6 +5653,7 @@ var workOrdersRouter = router({
     await db.insert(schema_exports.workOrders).values({
       woNumber: input.woNumber,
       poNumber: input.poNumber,
+      orderId: input.orderId,
       distributorName: input.distributorName,
       distributorPhone: input.distributorPhone,
       issuedAt: input.issuedAt,
@@ -5711,6 +5717,24 @@ var workOrdersRouter = router({
   seed: adminProcedure.mutation(async () => {
     const now = Date.now();
     const d = (days) => new Date(now + days * 864e5).toISOString().split("T")[0];
+    let orderId;
+    const existingOrders = await db.select({ id: schema_exports.doorOrders.id }).from(schema_exports.doorOrders).limit(1);
+    if (existingOrders.length > 0) {
+      orderId = existingOrders[0].id;
+    } else {
+      const [insertResult] = await db.insert(schema_exports.doorOrders).values({
+        customerName: "\u0639\u0645\u064A\u0644 \u062A\u062C\u0631\u064A\u0628\u064A",
+        customerPhone: "0500000000",
+        productId: "DOOR-001",
+        productName: "\u0628\u0627\u0628 \u062E\u0634\u0628\u064A \u0633\u0648\u064A\u062F\u064A",
+        selections: {},
+        subSelections: {},
+        dimensions: {},
+        createdAt: now,
+        updatedAt: now
+      });
+      orderId = insertResult.insertId;
+    }
     const makeTasks = (qty, status, pct, start, due) => ["door_line", "frame_line", "accessories", "qc", "packing"].map(
       (deptId) => ({
         deptId,
@@ -5729,6 +5753,7 @@ var workOrdersRouter = router({
       {
         woNumber: "WO-2026-0001",
         poNumber: "SND-0453",
+        orderId,
         distributorName: "\u0645\u062C\u0645\u0648\u0639\u0629 \u0627\u0644\u0631\u0627\u0634\u062F \u0627\u0644\u0639\u0642\u0627\u0631\u064A\u0629",
         distributorPhone: "0501234567",
         issuedAt: now - 8 * 864e5,
@@ -5750,6 +5775,7 @@ var workOrdersRouter = router({
       {
         woNumber: "WO-2026-0002",
         poNumber: "SND-0455",
+        orderId,
         distributorName: "\u0645\u0624\u0633\u0633\u0629 \u0627\u0644\u0625\u062A\u0642\u0627\u0646 \u0644\u0644\u0645\u0642\u0627\u0648\u0644\u0627\u062A",
         distributorPhone: "0507654321",
         issuedAt: now - 5 * 864e5,
@@ -5771,6 +5797,7 @@ var workOrdersRouter = router({
       {
         woNumber: "WO-2026-0003",
         poNumber: "SND-0449",
+        orderId,
         distributorName: "\u0634\u0631\u0643\u0629 \u0627\u0644\u062F\u064A\u0627\u0631 \u0644\u0644\u062A\u0637\u0648\u064A\u0631",
         distributorPhone: "0551112233",
         issuedAt: now - 18 * 864e5,
