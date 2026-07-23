@@ -15,6 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { useCart } from "@/contexts/CartContext";
+import { useUserAuth } from "@/contexts/UserAuthContext";
 import {
   Star,
   ShoppingCart,
@@ -176,6 +177,7 @@ export default function ProductDetail() {
       { id: productId ?? "" },
       { enabled: !!productId }
     );
+  const { user, toggleWishlist, isInWishlist } = useUserAuth();
 
   const { data: allProductsForRelated = [] } = trpc.products.list.useQuery();
   const { data: optionSectionsData = [] } = trpc.productOptions.get.useQuery();
@@ -183,7 +185,7 @@ export default function ProductDetail() {
 
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
-  const [isWishlisted, setIsWishlisted] = useState(false);
+  const isWishlisted = product ? isInWishlist(Number(product.id)) : false;
   const [zoomOpen, setZoomOpen] = useState(false);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [showDoorWizard, setShowDoorWizard] = useState(false);
@@ -730,15 +732,17 @@ export default function ProductDetail() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    setIsWishlisted(!isWishlisted);
+                    if (!product) return;
+                    if (!user) {
+                      toast.error(dir === "rtl" ? "الرجاء تسجيل الدخول أولاً" : "Please log in first");
+                      return;
+                    }
+                    const wasIn = isInWishlist(Number(product.id));
+                    toggleWishlist(Number(product.id));
                     toast.success(
-                      isWishlisted
-                        ? dir === "rtl"
-                          ? "تمت الإزالة من المفضلة"
-                          : "Removed from wishlist"
-                        : dir === "rtl"
-                          ? "تمت الإضافة للمفضلة"
-                          : "Added to wishlist"
+                      wasIn
+                        ? (dir === "rtl" ? "تمت الإزالة من المفضلة" : "Removed from wishlist")
+                        : (dir === "rtl" ? "تمت الإضافة للمفضلة" : "Added to wishlist")
                     );
                   }}
                   className={`h-12 w-12 rounded-lg ${isWishlisted ? "text-red-500 border-red-200 bg-red-50" : ""}`}

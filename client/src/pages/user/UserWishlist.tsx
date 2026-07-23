@@ -8,7 +8,7 @@
 import { Link } from "wouter";
 import { useUserAuth } from "@/contexts/UserAuthContext";
 import { useCart } from "@/contexts/CartContext";
-import { allProducts } from "@/lib/productsData";
+import { trpc } from "@/lib/trpc";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Heart, ChevronLeft, ShoppingCart, Trash2, ArrowRight } from "lucide-react";
@@ -21,6 +21,8 @@ export default function UserWishlist() {
   const { addToCart } = useCart();
   const { dir } = useLanguage();
   const isRTL = dir === "rtl";
+
+  const { data: allProducts = [] } = trpc.products.list.useQuery();
 
   if (!user) return null;
 

@@ -9,6 +9,7 @@ import { Link, useLocation } from "wouter";
 import { useUserAuth } from "@/contexts/UserAuthContext";
 import { mockOrders, orderStatusLabels, orderStatusColors } from "@/lib/userData";
 import { allProducts } from "@/lib/productsData";
+import { trpc } from "@/lib/trpc";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import {
@@ -20,8 +21,29 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 
+const realOrderStatusLabels: Record<string, string> = {
+  new: "طلب جديد",
+  reviewing: "قيد المراجعة",
+  confirmed: "مؤكد",
+  in_production: "في الإنتاج",
+  ready: "جاهز للتسليم",
+  delivered: "تم التسليم",
+  cancelled: "ملغي",
+};
+
+const realOrderStatusColors: Record<string, string> = {
+  new: "bg-indigo-100 text-indigo-700",
+  reviewing: "bg-yellow-100 text-yellow-700",
+  confirmed: "bg-green-100 text-green-700",
+  in_production: "bg-blue-100 text-blue-700",
+  ready: "bg-purple-100 text-purple-700",
+  delivered: "bg-green-100 text-green-700",
+  cancelled: "bg-red-100 text-red-700",
+};
+
 export default function UserDashboard() {
   const { user, logout, wishlistIds, isLoading } = useUserAuth();
+  const { data: myOrders } = trpc.customerPortal.myOrders.useQuery();
   const [, navigate] = useLocation();
   const [activeSection] = useState("overview");
   const { dir } = useLanguage();
@@ -38,7 +60,15 @@ export default function UserDashboard() {
     navigate("/");
   };
 
-  const recentOrders = mockOrders.slice(0, 3);
+  const recentOrders = (myOrders ?? [])
+    .slice(0, 3)
+    .map((o: any) => ({
+      id: `ORD-${o.id}`,
+      status: o.status as string,
+      itemsCount: o.totalDoors ?? 1,
+      date: o.createdAt ? new Date(o.createdAt).toLocaleDateString("ar-SA") : "",
+      total: Number(o.totalPrice ?? 0),
+    }));
   const wishlistProducts = allProducts.filter((p) => wishlistIds.includes(Number(p.id))).slice(0, 4);
 
   const navItems = [
@@ -201,12 +231,12 @@ export default function UserDashboard() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
                           <span className="font-semibold text-sm" style={{ color: "#2C4A3E" }}>{order.id}</span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${orderStatusColors[order.status]}`}>
-                            {orderStatusLabels[order.status]}
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${realOrderStatusColors[order.status] ?? "bg-gray-100 text-gray-700"}`}>
+                            {realOrderStatusLabels[order.status] ?? order.status}
                           </span>
                         </div>
                         <div className="text-xs" style={{ color: "#6B7B75" }}>
-                          {order.items.length} {dir === "rtl" ? "منتج" : "items"} · {order.date}
+                          {order.itemsCount} {dir === "rtl" ? "منتج" : "items"} · {order.date}
                         </div>
                       </div>
                       <div className={`${dir === "rtl" ? "text-right" : "text-left"} flex-shrink-0`}>

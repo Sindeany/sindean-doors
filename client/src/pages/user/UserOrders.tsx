@@ -7,11 +7,12 @@
 import { useState } from "react";
 import { Link, useParams } from "wouter";
 import { useUserAuth } from "@/contexts/UserAuthContext";
+import { trpc } from "@/lib/trpc";
 import { mockOrders, orderStatusLabels, orderStatusColors, CustomerOrder } from "@/lib/userData";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import {
-  Package, ChevronLeft, Search, CheckCircle2,
+  Package, ChevronLeft, ChevronDown, Search, CheckCircle2,
   Truck, Factory, Star, Download, MessageCircle, RotateCcw, Eye
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,13 +31,82 @@ const statusOrder: Record<OrderStatus, number> = {
   cancelled: -1,
 };
 
+const fieldLabelsAr: Record<string, string> = {
+  color_choice: "اللون", color: "اللون", wood_type: "نوع الخشب", wood: "الخشب",
+  door_direction: "اتجاه الباب", frame_type: "نوع الإطار", hinge_type: "نوع المفصلة",
+  lock: "القفل", hinges: "المفصلات", handle: "المقبض", finish: "التشطيب",
+  height: "الارتفاع", width: "العرض", wallThickness: "سماكة الجدار", wall_thickness: "سماكة الجدار",
+  type: "النوع", brand: "الماركة", count: "العدد",
+};
+const humanizeValue = (v: any): string => {
+  if (v == null) return "";
+  if (typeof v === "object") {
+    return Object.entries(v)
+      .map(([k, val]) => `${fieldLabelsAr[k] ?? k}: ${humanizeValue(val)}`)
+      .join("، ");
+  }
+  return String(v).replace(/_/g, " ");
+};
+const labelFor = (k: string) => fieldLabelsAr[k] ?? k.replace(/_/g, " ");
+
 export default function UserOrders() {
   const { user } = useUserAuth();
+  const { data: rawOrders = [] } = trpc.customerPortal.myOrders.useQuery();
+  const { data: allProducts = [] } = trpc.products.list.useQuery();
+  const productImageMap = new Map(
+    (allProducts as any[]).map((p) => [String(p.id), p.image || (p.images?.[0] ?? "")])
+  );
+
+  const realStatusLabels: Record<string, string> = {
+    new: "طلب جديد",
+    reviewing: "قيد المراجعة",
+    confirmed: "مؤكد",
+    in_production: "في الإنتاج",
+    ready: "جاهز للتسليم",
+    delivered: "تم التسليم",
+    cancelled: "ملغي",
+  };
+
+  const realStatusColors: Record<string, string> = {
+    new: "bg-indigo-100 text-indigo-700",
+    reviewing: "bg-yellow-100 text-yellow-700",
+    confirmed: "bg-green-100 text-green-700",
+    in_production: "bg-blue-100 text-blue-700",
+    ready: "bg-purple-100 text-purple-700",
+    delivered: "bg-green-100 text-green-700",
+    cancelled: "bg-red-100 text-red-700",
+  };
+
+  const orders = (rawOrders as any[]).map((o) => {
+    const img = productImageMap.get(String(o.productId)) ?? "";
+    return {
+      id: `ORD-${o.id}`,
+      rawId: o.id,
+      productId: String(o.productId),
+      status: o.status as string,
+      date: o.createdAt ? new Date(o.createdAt).toLocaleDateString("ar-SA") : "",
+      estimatedDelivery: o.expectedDelivery ? new Date(o.expectedDelivery).toLocaleDateString("ar-SA") : "",
+      total: Number(o.totalPrice ?? 0),
+      selections: (typeof o.selections === "string" ? JSON.parse(o.selections || "{}") : o.selections) ?? {},
+      subSelections: (typeof o.subSelections === "string" ? JSON.parse(o.subSelections || "{}") : o.subSelections) ?? {},
+      dimensions: (typeof o.dimensions === "string" ? JSON.parse(o.dimensions || "{}") : o.dimensions) ?? {},
+      items: [
+        {
+          name: o.productName ?? "باب",
+          image: img,
+          quantity: o.totalDoors ?? 1,
+          unitPrice: Number(o.totalPrice ?? 0),
+          totalPrice: Number(o.totalPrice ?? 0),
+        },
+      ],
+    };
+  });
   const params = useParams<{ id?: string }>();
   const orderId = params.id;
   const { dir } = useLanguage();
 
   const [search, setSearch] = useState("");
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
 
   const statusFilters: { id: OrderStatus | "all"; label: string }[] = dir === "rtl" ? [
@@ -73,7 +143,7 @@ export default function UserOrders() {
 
   // ── Single order detail view ──────────────────────────────────────────────
   if (orderId) {
-    const order = mockOrders.find((o) => o.id === orderId);
+    const order = orders.find((o) => o.id === orderId);
     if (!order) return (
       <div className="min-h-screen bg-[#FAF8F5]" dir={dir}>
         <Navbar />
@@ -92,7 +162,26 @@ export default function UserOrders() {
       </div>
     );
 
-    const currentStep = statusOrder[order.status];
+    // خطوات الحالة الحقيقية (تُطابق حالات doorOrders)
+    const realStepOrder: Record<string, number> = {
+      new: 1, reviewing: 2, confirmed: 3, in_production: 4, ready: 5, delivered: 6, cancelled: 0,
+    };
+    const realDetailSteps = dir === "rtl" ? [
+      { key: "new", label: "طلب جديد", icon: CheckCircle2 },
+      { key: "reviewing", label: "قيد المراجعة", icon: CheckCircle2 },
+      { key: "confirmed", label: "مؤكد", icon: CheckCircle2 },
+      { key: "in_production", label: "في الإنتاج", icon: Factory },
+      { key: "ready", label: "جاهز للتسليم", icon: Truck },
+      { key: "delivered", label: "تم التسليم", icon: Package },
+    ] : [
+      { key: "new", label: "New", icon: CheckCircle2 },
+      { key: "reviewing", label: "Reviewing", icon: CheckCircle2 },
+      { key: "confirmed", label: "Confirmed", icon: CheckCircle2 },
+      { key: "in_production", label: "In Production", icon: Factory },
+      { key: "ready", label: "Ready", icon: Truck },
+      { key: "delivered", label: "Delivered", icon: Package },
+    ];
+    const currentStep = realStepOrder[order.status] ?? 0;
 
     return (
       <div className="min-h-screen bg-[#FAF8F5]" dir={dir}>
@@ -117,44 +206,27 @@ export default function UserOrders() {
                   <h1 className="text-xl font-bold" style={{ color: "#2C4A3E", fontFamily: "'DM Serif Display', serif" }}>
                     {dir === "rtl" ? `طلب ${order.id}` : `Order ${order.id}`}
                   </h1>
-                  <span className={`text-sm px-3 py-1 rounded-full font-medium ${orderStatusColors[order.status]}`}>
-                    {orderStatusLabels[order.status]}
+                  <span className={`text-sm px-3 py-1 rounded-full font-medium ${realStatusColors[order.status] ?? "bg-gray-100 text-gray-700"}`}>
+                    {realStatusLabels[order.status] ?? order.status}
                   </span>
                 </div>
                 <p className="text-sm" style={{ color: "#6B7B75" }}>
                   {dir === "rtl" ? "تاريخ الطلب:" : "Order date:"} {order.date}
                   {order.estimatedDelivery && ` · ${dir === "rtl" ? "التسليم المتوقع:" : "Est. delivery:"} ${order.estimatedDelivery}`}
                 </p>
-                {order.trackingNumber && (
-                  <p className="text-xs mt-1" style={{ color: "#6B7B75" }}>
-                    {dir === "rtl" ? "رقم التتبع:" : "Tracking:"} {order.trackingNumber}
-                  </p>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="rounded-xl text-xs gap-1.5" style={{ borderColor: "#E8DFD0" }}>
-                  <Download className="w-3.5 h-3.5" />
-                  {dir === "rtl" ? "الفاتورة" : "Invoice"}
-                </Button>
-                <Button variant="outline" size="sm" className="rounded-xl text-xs gap-1.5" style={{ borderColor: "#E8DFD0" }}>
-                  <MessageCircle className="w-3.5 h-3.5" />
-                  {dir === "rtl" ? "الدعم" : "Support"}
-                </Button>
               </div>
             </div>
           </div>
 
-          {/* Timeline */}
+          {/* Timeline (مبني على الحالة الحقيقية) */}
           {order.status !== "cancelled" && (
             <div className="rounded-2xl p-6 mb-6" style={{ background: "white", border: "1px solid #E8DFD0" }}>
               <h2 className="text-base font-bold mb-6" style={{ color: "#2C4A3E" }}>
                 {dir === "rtl" ? "تتبع الطلب" : "Order Tracking"}
               </h2>
-
-              {/* Steps */}
-              <div className="relative flex justify-between mb-8">
+              <div className="relative flex justify-between mb-2">
                 <div className="absolute top-5 right-5 left-5 h-0.5" style={{ background: "#E8DFD0" }} />
-                {timelineSteps.map((step, i) => {
+                {realDetailSteps.map((step, i) => {
                   const done = currentStep >= i + 1;
                   const active = currentStep === i + 1;
                   return (
@@ -177,26 +249,6 @@ export default function UserOrders() {
                   );
                 })}
               </div>
-
-              {/* Events */}
-              <div className="space-y-3">
-                {order.timeline.map((event, i) => (
-                  <div key={i} className="flex items-start gap-3 p-3 rounded-xl" style={{ background: "#FAF8F5" }}>
-                    <div
-                      className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
-                      style={{ background: event.completed ? "#2C4A3E" : "#C8D5D0" }}
-                    />
-                    <div className="flex-1">
-                      <div className="text-sm font-semibold" style={{ color: "#2C4A3E" }}>
-                        {event.description || event.label}
-                      </div>
-                      <div className="text-xs mt-0.5" style={{ color: "#6B7B75" }}>
-                        {event.date} · {event.time}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
 
@@ -208,12 +260,16 @@ export default function UserOrders() {
             <div className="space-y-3">
               {order.items.map((item, i) => (
                 <div key={i} className="flex items-center gap-4 p-4 rounded-xl" style={{ background: "#FAF8F5", border: "1px solid #EDE8E0" }}>
-                  <img src={item.image} alt={item.name} className="w-16 h-16 object-cover rounded-xl flex-shrink-0" />
+                  {item.image ? (
+                    <img src={item.image} alt={item.name} className="w-16 h-16 object-cover rounded-xl flex-shrink-0"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                  ) : (
+                    <div className="w-16 h-16 rounded-xl flex-shrink-0 flex items-center justify-center bg-gray-100">
+                      <Package className="w-6 h-6 text-gray-400" />
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-sm mb-0.5" style={{ color: "#2C4A3E" }}>{item.name}</div>
-                    <div className="text-xs" style={{ color: "#6B7B75" }}>
-                      {item.wood} · {item.finish}
-                    </div>
                     <div className="text-xs mt-1" style={{ color: "#6B7B75" }}>
                       {dir === "rtl" ? "الكمية:" : "Qty:"} {item.quantity} × {item.unitPrice.toLocaleString()} {dir === "rtl" ? "ر.س" : "SAR"}
                     </div>
@@ -222,64 +278,64 @@ export default function UserOrders() {
                     <div className="font-bold text-sm" style={{ color: "#2C4A3E" }}>
                       {item.totalPrice.toLocaleString()} {dir === "rtl" ? "ر.س" : "SAR"}
                     </div>
-                    {order.status === "delivered" && (
-                      <button className="text-xs mt-1 flex items-center gap-1" style={{ color: "#C4956A" }}>
-                        <Star className="w-3 h-3" />
-                        {dir === "rtl" ? "تقييم" : "Review"}
-                      </button>
-                    )}
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Summary */}
-            <div className="mt-4 pt-4 border-t" style={{ borderColor: "#E8DFD0" }}>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between" style={{ color: "#6B7B75" }}>
-                  <span>{dir === "rtl" ? "المجموع الفرعي" : "Subtotal"}</span>
-                  <span>{order.subtotal.toLocaleString()} {dir === "rtl" ? "ر.س" : "SAR"}</span>
-                </div>
-                <div className="flex justify-between" style={{ color: "#6B7B75" }}>
-                  <span>{dir === "rtl" ? "ضريبة القيمة المضافة (15%)" : "VAT (15%)"}</span>
-                  <span>{order.vat.toLocaleString()} {dir === "rtl" ? "ر.س" : "SAR"}</span>
-                </div>
-                <div className="flex justify-between" style={{ color: "#6B7B75" }}>
-                  <span>{dir === "rtl" ? "الشحن" : "Shipping"}</span>
-                  <span>
-                    {order.shipping === 0
-                      ? (dir === "rtl" ? "مجاني" : "Free")
-                      : `${order.shipping.toLocaleString()} ${dir === "rtl" ? "ر.س" : "SAR"}`}
-                  </span>
-                </div>
-                <div
-                  className="flex justify-between font-bold text-base pt-2 border-t"
-                  style={{ borderColor: "#E8DFD0", color: "#2C4A3E" }}
+            {/* خيارات الطلب المُختارة (قابلة للطي) */}
+            {(Object.keys(order.dimensions).length > 0 ||
+              Object.keys(order.selections).length > 0 ||
+              Object.keys(order.subSelections).length > 0) && (
+              <div className="mt-4 pt-4 border-t" style={{ borderColor: "#E8DFD0" }}>
+                <button
+                  type="button"
+                  onClick={() => setOptionsOpen((v) => !v)}
+                  className="w-full flex items-center justify-between text-sm font-bold py-1"
+                  style={{ color: "#2C4A3E" }}
                 >
-                  <span>{dir === "rtl" ? "الإجمالي" : "Total"}</span>
-                  <span>{order.total.toLocaleString()} {dir === "rtl" ? "ر.س" : "SAR"}</span>
-                </div>
+                  <span>{dir === "rtl" ? "تفاصيل الطلب والخيارات" : "Order Options"}</span>
+                  <ChevronDown
+                    className="w-4 h-4 transition-transform"
+                    style={{ transform: optionsOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+                  />
+                </button>
+                {optionsOpen && (
+                  <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm mt-3">
+                    {Object.entries(order.dimensions).map(([k, v]) => (
+                      v != null && v !== "" && (
+                        <div key={`d-${k}`} className="flex justify-between">
+                          <span style={{ color: "#6B7B75" }}>{labelFor(k)}</span>
+                          <span style={{ color: "#2C4A3E" }}>{humanizeValue(v)} {dir === "rtl" ? "سم" : "cm"}</span>
+                        </div>
+                      )
+                    ))}
+                    {Object.entries(order.selections).map(([k, v]) => (
+                      v != null && v !== "" && (
+                        <div key={`s-${k}`} className="flex justify-between">
+                          <span style={{ color: "#6B7B75" }}>{labelFor(k)}</span>
+                          <span style={{ color: "#2C4A3E" }}>{humanizeValue(v)}</span>
+                        </div>
+                      )
+                    ))}
+                    {Object.entries(order.subSelections).map(([k, v]) => (
+                      v != null && v !== "" && (
+                        <div key={`ss-${k}`} className="flex justify-between sm:col-span-2">
+                          <span style={{ color: "#6B7B75" }}>{labelFor(k)}</span>
+                          <span style={{ color: "#2C4A3E" }}>{humanizeValue(v)}</span>
+                        </div>
+                      )
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          </div>
+            )}
 
-          {/* Delivery info */}
-          <div className="rounded-2xl p-6" style={{ background: "white", border: "1px solid #E8DFD0" }}>
-            <h2 className="text-base font-bold mb-4" style={{ color: "#2C4A3E" }}>
-              {dir === "rtl" ? "معلومات التوصيل" : "Delivery Information"}
-            </h2>
-            <div className="grid sm:grid-cols-2 gap-4 text-sm">
-              <div>
-                <div className="font-semibold mb-1" style={{ color: "#2C4A3E" }}>
-                  {dir === "rtl" ? "عنوان التوصيل" : "Delivery Address"}
-                </div>
-                <div style={{ color: "#6B7B75" }}>{order.address}</div>
-              </div>
-              <div>
-                <div className="font-semibold mb-1" style={{ color: "#2C4A3E" }}>
-                  {dir === "rtl" ? "طريقة الدفع" : "Payment Method"}
-                </div>
-                <div style={{ color: "#6B7B75" }}>{order.paymentMethod}</div>
+            {/* Total فقط (الخادم لا يوفّر تفصيل الضريبة/الشحن) */}
+            <div className="mt-4 pt-4 border-t" style={{ borderColor: "#E8DFD0" }}>
+              <div className="flex justify-between font-bold text-base" style={{ color: "#2C4A3E" }}>
+                <span>{dir === "rtl" ? "الإجمالي" : "Total"}</span>
+                <span>{order.total.toLocaleString()} {dir === "rtl" ? "ر.س" : "SAR"}</span>
               </div>
             </div>
           </div>
@@ -290,7 +346,7 @@ export default function UserOrders() {
   }
 
   // ── Orders list view ──────────────────────────────────────────────────────
-  const filtered = mockOrders.filter((o) => {
+  const filtered = orders.filter((o) => {
     const matchStatus = statusFilter === "all" || o.status === statusFilter;
     const matchSearch =
       o.id.toLowerCase().includes(search.toLowerCase()) ||
@@ -316,7 +372,7 @@ export default function UserOrders() {
             {dir === "rtl" ? "طلباتي" : "My Orders"}
           </h1>
           <span className="text-sm" style={{ color: "#6B7B75" }}>
-            {mockOrders.length} {dir === "rtl" ? "طلب" : "orders"}
+            {orders.length} {dir === "rtl" ? "طلب" : "orders"}
           </span>
         </div>
 
@@ -359,7 +415,7 @@ export default function UserOrders() {
         ) : (
           <div className="space-y-4">
             {filtered.map((order) => {
-              const currentStep = statusOrder[order.status];
+              const currentStep = statusOrder[order.status as keyof typeof statusOrder] ?? 0;
               return (
                 <div key={order.id} className="rounded-2xl overflow-hidden" style={{ background: "white", border: "1px solid #E8DFD0" }}>
                   {/* Header */}
@@ -370,8 +426,8 @@ export default function UserOrders() {
                     <div className="flex items-center gap-3">
                       <Package className="w-5 h-5" style={{ color: "#2C4A3E" }} />
                       <span className="font-bold text-sm" style={{ color: "#2C4A3E" }}>{order.id}</span>
-                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${orderStatusColors[order.status]}`}>
-                        {orderStatusLabels[order.status]}
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${realStatusColors[order.status] ?? "bg-gray-100 text-gray-700"}`}>
+                        {realStatusLabels[order.status] ?? order.status}
                       </span>
                     </div>
                     <div className="text-xs" style={{ color: "#6B7B75" }}>
@@ -384,13 +440,24 @@ export default function UserOrders() {
                   <div className="px-6 py-4">
                     <div className="flex items-center gap-3 mb-4">
                       {order.items.slice(0, 3).map((item, i) => (
-                        <img
+                        <div
                           key={i}
-                          src={item.image}
-                          alt={item.name}
-                          className="w-14 h-14 object-cover rounded-xl flex-shrink-0"
+                          className="w-14 h-14 rounded-xl flex-shrink-0 overflow-hidden"
                           style={{ border: "1px solid #E8DFD0" }}
-                        />
+                        >
+                          {item.image ? (
+                            <img
+                              src={item.image}
+                              alt={item.name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                              <Package className="w-6 h-6 text-gray-400" />
+                            </div>
+                          )}
+                        </div>
                       ))}
                       {order.items.length > 3 && (
                         <div
