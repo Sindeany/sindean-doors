@@ -95,7 +95,7 @@ export default function UserOrders() {
           name: o.productName ?? "باب",
           image: img,
           quantity: o.totalDoors ?? 1,
-          unitPrice: Number(o.totalPrice ?? 0),
+          unitPrice: Number(o.basePrice ?? 0) || (Number(o.totalPrice ?? 0) / (o.totalDoors || 1)),
           totalPrice: Number(o.totalPrice ?? 0),
         },
       ],

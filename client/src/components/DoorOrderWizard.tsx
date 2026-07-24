@@ -25,8 +25,12 @@ import {
   Minus,
   Info,
   CheckCircle2,
+  LogIn,
+  UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Link } from "wouter";
+import { useUserAuth } from "@/contexts/UserAuthContext";
 import {
   useProductOptions,
   type Section,
@@ -35,6 +39,7 @@ import {
 } from "@/stores/productOptionsStore";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
+import type { PriceTier } from "../lib/productsData";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,6 +57,8 @@ interface DoorOrderWizardProps {
   productId?: string;
   productName?: string;
   basePrice?: number;
+  tiers?: PriceTier[];
+  quantity?: number;
   productOptions?: Record<string, string[]> | null;
 }
 
@@ -855,14 +862,18 @@ function SummaryStep({
   subSelections,
   basePrice,
   priceAdj,
+  unitPrice,
+  quantity,
 }: {
   sections: Section[];
   selections: SelectionMap;
   subSelections: SubSelectionMap;
   basePrice: number;
   priceAdj: number;
+  unitPrice: number;
+  quantity: number;
 }) {
-  const total = basePrice + priceAdj;
+  const total = unitPrice * quantity;
 
   return (
     <motion.div
@@ -873,22 +884,32 @@ function SummaryStep({
       {/* Price summary */}
       <div className="bg-gradient-to-br from-oak/5 to-copper/5 border border-oak/20 rounded-2xl p-5">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-gray-600 text-sm">السعر الأساسي</span>
+          <span className="text-gray-600 text-sm">سعر الباب الواحد</span>
           <span className="font-semibold">
-            {basePrice.toLocaleString()} ر.س
+            {(basePrice + priceAdj).toLocaleString()} ر.س
           </span>
         </div>
         {priceAdj !== 0 && (
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-gray-600 text-sm">إضافات الخيارات</span>
-            <span
-              className={`font-semibold ${priceAdj > 0 ? "text-copper" : "text-green-600"}`}
-            >
+          <div className="flex items-center justify-between mb-3 text-xs text-gray-400">
+            <span>يشمل إضافات الخيارات</span>
+            <span className={priceAdj > 0 ? "text-copper" : "text-green-600"}>
               {priceAdj > 0 ? "+" : ""}
               {priceAdj.toLocaleString()} ر.س
             </span>
           </div>
         )}
+        {unitPrice !== (basePrice + priceAdj) && (
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-gray-600 text-sm">سعر الشريحة ({quantity} أبواب)</span>
+            <span className="font-semibold text-green-600">
+              {unitPrice.toLocaleString()} ر.س
+            </span>
+          </div>
+        )}
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-gray-600 text-sm">الكمية</span>
+          <span className="font-semibold">{quantity} باب</span>
+        </div>
         <div className="border-t border-oak/20 pt-3 flex items-center justify-between">
           <span className="font-bold text-gray-800">الإجمالي التقديري</span>
           <span className="text-2xl font-black text-oak">
@@ -970,8 +991,11 @@ export default function DoorOrderWizard({
   productId = "",
   productName,
   basePrice = 850,
+  tiers,
+  quantity,
   productOptions,
 }: DoorOrderWizardProps) {
+  const { user, login, register } = useUserAuth();
   const { enabledSections } = useProductOptions();
   const { dir } = useLanguage();
   const isRTL = dir === "rtl";
@@ -1039,6 +1063,42 @@ export default function DoorOrderWizard({
     name?: string;
     phone?: string;
   }>({});
+
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPhone, setAuthPhone] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+
+  const handleInlineAuth = async () => {
+    setAuthLoading(true);
+    try {
+      let ok = false;
+      if (authMode === "login") {
+        if (!authEmail || !authPassword) {
+          toast.error("يرجى إدخال البريد وكلمة المرور");
+          setAuthLoading(false);
+          return;
+        }
+        ok = await login(authEmail, authPassword);
+      } else {
+        if (!authName || !authEmail || !authPhone || !authPassword) {
+          toast.error("يرجى تعبئة جميع الحقول");
+          setAuthLoading(false);
+          return;
+        }
+        ok = await register(authName, authEmail, authPhone, authPassword);
+      }
+      if (ok) {
+        toast.success(authMode === "login" ? "تم تسجيل الدخول" : "تم إنشاء الحساب");
+      }
+    } catch {
+      toast.error("حدث خطأ، يرجى المحاولة مجدداً");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
   const contentRef = useRef<HTMLDivElement>(null);
 
   const createOrder = trpc.orders.create.useMutation();
@@ -1069,7 +1129,11 @@ export default function DoorOrderWizard({
   }, [isOpen]);
 
   const priceAdj = calcPriceAdj(activeSections, selections, subSelections);
-  const totalPrice = basePrice + priceAdj;
+  const qty = quantity ?? 1;
+  const currentTier =
+    tiers?.find(t => qty >= t.min && (t.max === null || qty <= t.max)) ?? tiers?.[0];
+  const unitPrice = (currentTier?.price ?? basePrice) + priceAdj;
+  const totalPrice = unitPrice * qty;
 
   const currentSection = allSteps[currentStep];
   const isSummary = currentSection?.id === "__summary__";
@@ -1131,15 +1195,10 @@ export default function DoorOrderWizard({
   };
 
   const handleSubmit = async () => {
-    // Validate customer info
-    const errs: { name?: string; phone?: string } = {};
-    if (!customerName.trim()) errs.name = "الاسم مطلوب";
-    if (!customerPhone.trim()) errs.phone = "رقم الجوال مطلوب";
-    if (Object.keys(errs).length > 0) {
-      setCustomerErrors(errs);
+    if (!user) {
+      toast.error("يرجى تسجيل الدخول أولاً لإرسال الطلب");
       return;
     }
-    setCustomerErrors({});
     setSubmitting(true);
     try {
       // Serialize all selections as strings (preserves toggles and number inputs)
@@ -1161,15 +1220,16 @@ export default function DoorOrderWizard({
       }
 
       const result = await createOrder.mutateAsync({
-        customerName: customerName.trim(),
-        customerPhone: customerPhone.trim(),
-        customerEmail: customerEmail.trim() || undefined,
+        customerName: user?.name ?? "",
+        customerPhone: user?.phone ?? "",
+        customerEmail: user?.email ?? undefined,
         productId: productId || "unknown",
         productName: productName || "باب سنديان",
+        totalDoors: qty,
         selections: allSelections,
         subSelections: subSelections as Record<string, unknown>,
         dimensions: Object.keys(dims).length > 0 ? dims : undefined,
-        basePrice,
+        basePrice: (currentTier?.price ?? basePrice),
         totalPrice,
         notes: String(selections["special_request_text"] ?? ""),
       });
@@ -1312,60 +1372,79 @@ export default function DoorOrderWizard({
                       sections={activeSections}
                       selections={selections}
                       subSelections={subSelections}
-                      basePrice={basePrice}
+                      basePrice={currentTier?.price ?? basePrice}
                       priceAdj={priceAdj}
+                      unitPrice={unitPrice}
+                      quantity={qty}
                     />
-                    {/* Customer Info */}
-                    <div className="mt-4 bg-white border border-gray-100 rounded-xl p-4 space-y-3">
-                      <h4 className="font-semibold text-gray-700 text-sm flex items-center gap-2">
-                        <Phone className="w-4 h-4 text-oak" /> بيانات التواصل
-                      </h4>
-                      <div>
-                        <input
-                          type="text"
-                          placeholder="الاسم الكامل *"
-                          value={customerName}
-                          onChange={e => setCustomerName(e.target.value)}
-                          className={`w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-oak/30 ${
-                            customerErrors.name
-                              ? "border-red-400"
-                              : "border-gray-200"
-                          }`}
-                        />
-                        {customerErrors.name && (
-                          <p className="text-red-500 text-xs mt-1">
-                            {customerErrors.name}
-                          </p>
-                        )}
-                      </div>
-                      <div>
-                        <input
-                          type="tel"
-                          placeholder="رقم الجوال *"
-                          value={customerPhone}
-                          onChange={e => setCustomerPhone(e.target.value)}
-                          className={`w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-oak/30 ${
-                            customerErrors.phone
-                              ? "border-red-400"
-                              : "border-gray-200"
-                          }`}
-                        />
-                        {customerErrors.phone && (
-                          <p className="text-red-500 text-xs mt-1">
-                            {customerErrors.phone}
-                          </p>
-                        )}
-                      </div>
-                      <div>
-                        <input
-                          type="email"
-                          placeholder="البريد الإلكتروني (اختياري)"
-                          value={customerEmail}
-                          onChange={e => setCustomerEmail(e.target.value)}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-oak/30"
-                        />
-                      </div>
-                    </div>
+              {/* Customer Info — تلقائي للعميل المسجّل / دعوة تسجيل للزائر */}
+              {user ? null : (
+                <div className="mt-4 bg-white border border-oak/20 rounded-xl p-5">
+                  <h4 className="font-bold text-gray-800 text-sm mb-1 text-center">
+                    {authMode === "login" ? "سجّل الدخول لإتمام الطلب" : "أنشئ حساباً لإتمام الطلب"}
+                  </h4>
+                  <p className="text-xs text-gray-500 mb-4 text-center">
+                    لن تفقد خياراتك — سيُكمَل طلبك بعد الدخول مباشرة.
+                  </p>
+
+                  {authMode === "register" && (
+                    <input
+                      type="text"
+                      placeholder="الاسم الكامل"
+                      value={authName}
+                      onChange={e => setAuthName(e.target.value)}
+                      className="w-full mb-3 px-3 py-2 rounded-lg border border-gray-300 text-sm outline-none focus:border-oak"
+                    />
+                  )}
+                  <input
+                    type="email"
+                    placeholder="البريد الإلكتروني"
+                    value={authEmail}
+                    onChange={e => setAuthEmail(e.target.value)}
+                    className="w-full mb-3 px-3 py-2 rounded-lg border border-gray-300 text-sm outline-none focus:border-oak"
+                  />
+                  {authMode === "register" && (
+                    <input
+                      type="tel"
+                      placeholder="رقم الجوال"
+                      value={authPhone}
+                      onChange={e => setAuthPhone(e.target.value)}
+                      className="w-full mb-3 px-3 py-2 rounded-lg border border-gray-300 text-sm outline-none focus:border-oak"
+                    />
+                  )}
+                  <input
+                    type="password"
+                    placeholder="كلمة المرور"
+                    value={authPassword}
+                    onChange={e => setAuthPassword(e.target.value)}
+                    className="w-full mb-3 px-3 py-2 rounded-lg border border-gray-300 text-sm outline-none focus:border-oak"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={handleInlineAuth}
+                    disabled={authLoading}
+                    className="w-full py-2.5 rounded-lg bg-oak text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+                  >
+                    {authLoading
+                      ? "جارٍ..."
+                      : authMode === "login"
+                      ? "تسجيل الدخول"
+                      : "إنشاء حساب"}
+                  </button>
+
+                  <p className="text-xs text-gray-500 text-center mt-3">
+                    {authMode === "login" ? "ليس لديك حساب؟ " : "لديك حساب بالفعل؟ "}
+                    <button
+                      type="button"
+                      onClick={() => setAuthMode(authMode === "login" ? "register" : "login")}
+                      className="text-oak font-semibold underline"
+                    >
+                      {authMode === "login" ? "أنشئ حساباً" : "سجّل الدخول"}
+                    </button>
+                  </p>
+                </div>
+              )}
                   </motion.div>
                 ) : (
                   <SectionStep
@@ -1401,7 +1480,7 @@ export default function DoorOrderWizard({
                   {isSummary ? (
                     <button
                       onClick={handleSubmit}
-                      disabled={submitting}
+                      disabled={!user || submitting}
                       className="flex-1 py-3 bg-oak text-white rounded-xl font-bold hover:bg-oak/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
                     >
                       {submitting ? (

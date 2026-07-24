@@ -1,7 +1,7 @@
 /**
  * AdminOrdersDB — صفحة إدارة الطلبات المبنية على بيانات قاعدة البيانات الحقيقية
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/admin/AdminLayout";
@@ -114,6 +114,7 @@ type Order = {
   dimensions: unknown;
   basePrice: number;
   totalPrice: number;
+  totalDoors?: number | null;
   status: string;
   notes: string | null;
   createdAt: number;
@@ -396,6 +397,10 @@ function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => voi
                 <p className="font-bold text-oak text-lg">{order.totalPrice.toLocaleString()} ر.س</p>
               </div>
               <div>
+                <p className="text-gray-400 text-xs">الكمية (عدد الأبواب)</p>
+                <p className="font-bold text-oak text-lg">{order.totalDoors ?? 1}</p>
+              </div>
+              <div>
                 <p className="text-gray-400 text-xs">السعر الأساسي</p>
                 <p className="font-medium text-gray-600">{order.basePrice.toLocaleString()} ر.س</p>
               </div>
@@ -468,8 +473,21 @@ function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => voi
             </div>
           )}
 
-          {/* Invoice Action */}
-          <div className="border-t border-gray-100 pt-4">
+          {/* Actions */}
+          <div className="border-t border-gray-100 pt-4 flex flex-col gap-3">
+            <button
+              onClick={() => {
+                onClose();
+                navigate(`/admin/work-orders?prefillOrder=${order.id}`);
+              }}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90 active:scale-[0.98]"
+              style={{ background: "oklch(0.38 0.06 160)" }}
+            >
+              <Wrench className="w-4 h-4" />
+              إنشاء أمر تشغيل (Work Order)
+              <ChevronRight className="w-4 h-4 opacity-60" />
+            </button>
+
             <button
               onClick={() => setShowInvoiceModal(true)}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90 active:scale-[0.98]"
@@ -555,6 +573,19 @@ export default function AdminOrdersDB() {
   const { data: orders = [], isLoading, refetch } = trpc.orders.list.useQuery(
     filterStatus !== "all" ? { status: filterStatus as any } : undefined
   );
+
+  // ── Open Order detail from query parameter if present ──
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const orderIdStr = params.get("orderId");
+    if (orderIdStr && orders.length > 0) {
+      const orderId = parseInt(orderIdStr, 10);
+      const found = orders.find((o) => o.id === orderId);
+      if (found) {
+        setSelectedOrder(found);
+      }
+    }
+  }, [orders]);
 
   const deleteOrder = trpc.orders.delete.useMutation();
   const utils = trpc.useUtils();

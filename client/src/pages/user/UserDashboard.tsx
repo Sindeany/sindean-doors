@@ -44,6 +44,7 @@ const realOrderStatusColors: Record<string, string> = {
 export default function UserDashboard() {
   const { user, logout, wishlistIds, isLoading } = useUserAuth();
   const { data: myOrders } = trpc.customerPortal.myOrders.useQuery();
+  const ordersCount = (myOrders ?? []).length;
   const [, navigate] = useLocation();
   const [activeSection] = useState("overview");
   const { dir } = useLanguage();
@@ -81,7 +82,7 @@ export default function UserDashboard() {
   ];
 
   const stats = [
-    { label: dir === "rtl" ? "إجمالي الطلبات" : "Total Orders", value: (user.totalOrders ?? 0) ?? 0, icon: ShoppingBag, color: "#2C4A3E" },
+    { label: dir === "rtl" ? "إجمالي الطلبات" : "Total Orders", value: ordersCount, icon: ShoppingBag, color: "#2C4A3E" },
     { label: dir === "rtl" ? "إجمالي الإنفاق" : "Total Spent", value: `${((user.totalSpent ?? 0) ?? 0).toLocaleString()} ${dir === "rtl" ? "ر.س" : "SAR"}`, icon: TrendingUp, color: "#C4956A" },
     { label: dir === "rtl" ? "نقاط الولاء" : "Loyalty Points", value: ((user.loyaltyPoints ?? 0) ?? 0).toLocaleString(), icon: Star, color: "#7B5EA7" },
     { label: dir === "rtl" ? "المفضلة" : "Wishlist", value: wishlistIds.length, icon: Heart, color: "#E05C5C" },
@@ -123,7 +124,7 @@ export default function UserDashboard() {
                 </div>
                 <div className="w-px h-8 opacity-30" style={{ background: "white" }} />
                 <div className="text-center">
-                  <div className="font-bold text-lg">{(user.totalOrders ?? 0)}</div>
+                  <div className="font-bold text-lg">{ordersCount}</div>
                   <div className="text-xs opacity-70">{dir === "rtl" ? "طلب" : "Orders"}</div>
                 </div>
                 <div className="w-px h-8 opacity-30" style={{ background: "white" }} />
@@ -150,7 +151,7 @@ export default function UserDashboard() {
                     <span className="text-sm font-medium">{item.label}</span>
                     {item.id === "orders" && (
                       <span className={`${dir === "rtl" ? "mr-auto" : "ml-auto"} text-xs font-bold px-2 py-0.5 rounded-full text-white`} style={{ background: "#2C4A3E" }}>
-                        {(user.totalOrders ?? 0)}
+                        {ordersCount}
                       </span>
                     )}
                     {item.id === "wishlist" && wishlistIds.length > 0 && (

@@ -1104,7 +1104,7 @@ var pool = mysql.createPool({
 var db = drizzle(pool, { schema: schema_exports, mode: "default" });
 
 // server/routers.ts
-import { eq as eq27, desc as desc23, like as like4, ne as ne2 } from "drizzle-orm";
+import { eq as eq27, desc as desc23, like as like4, ne as ne2, and as and15, gt as gt6 } from "drizzle-orm";
 
 // server/trpc.ts
 import { initTRPC, TRPCError } from "@trpc/server";
@@ -9634,6 +9634,7 @@ var ordersRouter = router({
       customerEmail: z27.string().email().optional().or(z27.literal("")),
       productId: z27.string(),
       productName: z27.string(),
+      totalDoors: z27.number().int().positive().default(1),
       selections: z27.record(z27.string(), z27.string()),
       subSelections: z27.record(z27.string(), z27.unknown()),
       dimensions: z27.record(z27.string(), z27.unknown()).optional(),
@@ -9641,14 +9642,31 @@ var ordersRouter = router({
       totalPrice: z27.number().default(0),
       notes: z27.string().optional()
     })
-  ).mutation(async ({ input }) => {
+  ).mutation(async ({ input, ctx }) => {
+    let resolvedEmail = input.customerEmail || null;
+    if (ctx.userToken) {
+      const now2 = Date.now();
+      const session = await db.query.userSessions.findFirst({
+        where: and15(
+          eq27(schema_exports.userSessions.token, ctx.userToken),
+          gt6(schema_exports.userSessions.expiresAt, now2)
+        )
+      });
+      if (session) {
+        const u = await db.query.users.findFirst({
+          where: eq27(schema_exports.users.id, session.userId)
+        });
+        if (u?.email) resolvedEmail = u.email;
+      }
+    }
     const now = Date.now();
     const [result] = await db.insert(schema_exports.doorOrders).values({
       customerName: input.customerName,
       customerPhone: input.customerPhone,
-      customerEmail: input.customerEmail || null,
+      customerEmail: resolvedEmail,
       productId: input.productId,
       productName: input.productName,
+      totalDoors: input.totalDoors ?? 1,
       selections: input.selections,
       subSelections: input.subSelections,
       dimensions: input.dimensions || null,

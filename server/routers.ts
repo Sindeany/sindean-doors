@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 import { db, schema } from "./db.js";
-import { eq, desc, like, or, ne } from "drizzle-orm";
+import { eq, desc, like, or, ne, and, gt } from "drizzle-orm";
 import { router, publicProcedure, adminProcedure } from "./trpc.js";
 import { suppliersRouter } from "./suppliers.router.js";
 import { rfqRouter } from "./rfq.router.js";
@@ -94,6 +94,7 @@ const ordersRouter = router({
         customerEmail: z.string().email().optional().or(z.literal("")),
         productId: z.string(),
         productName: z.string(),
+        totalDoors: z.number().int().positive().default(1),
         selections: z.record(z.string(), z.string()),
         subSelections: z.record(z.string(), z.unknown()),
         dimensions: z.record(z.string(), z.unknown()).optional(),
@@ -102,14 +103,32 @@ const ordersRouter = router({
         notes: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      // فرض بريد الحساب المسجّل تلقائياً إن وُجدت جلسة صالحة (وإلا يبقى بريد الضيف)
+      let resolvedEmail = input.customerEmail || null;
+      if (ctx.userToken) {
+        const now = Date.now();
+        const session = await db.query.userSessions.findFirst({
+          where: and(
+            eq(schema.userSessions.token, ctx.userToken),
+            gt(schema.userSessions.expiresAt, now)
+          ),
+        });
+        if (session) {
+          const u = await db.query.users.findFirst({
+            where: eq(schema.users.id, session.userId),
+          });
+          if (u?.email) resolvedEmail = u.email;
+        }
+      }
       const now = Date.now();
       const [result] = await db.insert(schema.doorOrders).values({
         customerName: input.customerName,
         customerPhone: input.customerPhone,
-        customerEmail: input.customerEmail || null,
+        customerEmail: resolvedEmail,
         productId: input.productId,
         productName: input.productName,
+        totalDoors: input.totalDoors ?? 1,
         selections: input.selections,
         subSelections: input.subSelections,
         dimensions: input.dimensions || null,

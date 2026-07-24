@@ -107,10 +107,7 @@ export function UserAuthProvider({ children }: { children: ReactNode }) {
     }
     try {
       const result = await toggleWishlistMutation.mutateAsync({ productId });
-      utils.users.me.setData(undefined, (prev: any) => {
-        if (!prev) return prev;
-        return { ...prev, wishlistIds: result.wishlistIds };
-      });
+      await utils.users.me.invalidate();
       const added = result.wishlistIds.includes(productId);
       toast.success(
         added ? "تمت إضافة المنتج إلى المفضلة" : "تمت إزالة المنتج من المفضلة"

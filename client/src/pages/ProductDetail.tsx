@@ -1206,6 +1206,8 @@ export default function ProductDetail() {
         productId={product.id}
         productName={product.name}
         basePrice={product.tiers[0]?.price}
+        tiers={product.tiers}
+        quantity={quantity}
         productOptions={productOptions}
       />
 
