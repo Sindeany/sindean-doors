@@ -109,11 +109,13 @@ function buildCartItem(product: Product, quantity: number, options: SelectedOpti
 
 /** حساب ملخص السلة */
 function calcSummary(items: CartItem[]): CartSummary {
-  const subtotal = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-  const totalSavings = items.reduce((sum, item) => sum + item.savings, 0);
   const vatRate = 0.15;
-  const vat = subtotal * vatRate;
-  const total = subtotal + vat;
+  // الأسعار شاملة الضريبة: الإجمالي = مجموع الأسعار كما هي
+  const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+  const totalSavings = items.reduce((sum, item) => sum + item.savings, 0);
+  // استخراج الصافي والضريبة من داخل الإجمالي الشامل
+  const subtotal = Math.round((total / (1 + vatRate)) * 100) / 100;
+  const vat = Math.round((total - subtotal) * 100) / 100;
   const totalItems = items.length;
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
 

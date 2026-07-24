@@ -916,8 +916,12 @@ function SummaryStep({
             {total.toLocaleString()} ر.س
           </span>
         </div>
+        <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+          <span>شامل ضريبة القيمة المضافة (15%)</span>
+          <span>{(total - Math.round((total / 1.15) * 100) / 100).toLocaleString()} ر.س</span>
+        </div>
         <p className="text-xs text-gray-400 mt-2">
-          * السعر النهائي يُحدد بعد مراجعة المواصفات
+          * جميع الأسعار شاملة ضريبة القيمة المضافة (15%). السعر النهائي يُحدد بعد مراجعة المواصفات
         </p>
       </div>
 
