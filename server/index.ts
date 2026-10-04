@@ -12,6 +12,7 @@ import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import { appRouter } from "./routers.js";
 import { handleImageUpload } from "./upload-handler.js";
+import { staffSessionTokenFromRequest } from "./staff-sessions.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -72,6 +73,7 @@ async function startServer() {
 
   // Apply stricter rate limiting to auth-related routes
   app.use("/api/trpc/adminAuth", authLimiter);
+  app.use("/api/trpc/staffAuth", authLimiter);
   app.use("/api/trpc/users", authLimiter);
   app.use("/api/trpc/suppliers", authLimiter);
   app.use("/api/trpc/distributors", authLimiter);
@@ -108,6 +110,7 @@ async function startServer() {
         userToken: req.cookies?.userSession as string | undefined,
         supplierToken: req.cookies?.supplierSession as string | undefined,
         distributorToken: req.cookies?.distributorSession as string | undefined,
+        staffToken: staffSessionTokenFromRequest(req),
         req,
         res,
       }),

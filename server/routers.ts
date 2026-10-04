@@ -14,6 +14,7 @@ import { paymentsRouter } from "./payments.router.js";
 import { zatcaRouter } from "./zatca.router.js";
 import { createInvoiceFromOrder } from "./zatca.service.js";
 import { adminAuthRouter } from "./admin.router.js";
+import { staffAuthRouter } from "./staff.router.js";
 import { usersRouter } from "./users.router.js";
 import { inventoryRouter } from "./inventory.router.js";
 import { distributorsAdminRouter } from "./distributors-admin.router.js";
@@ -689,6 +690,7 @@ export const appRouter = router({
   payments: paymentsRouter,
   zatca: zatcaRouter,
   adminAuth: adminAuthRouter,
+  staffAuth: staffAuthRouter,
   users: usersRouter,
   inventory: inventoryRouter,
   distributorsAdmin: distributorsAdminRouter,

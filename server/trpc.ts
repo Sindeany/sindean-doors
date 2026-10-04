@@ -5,6 +5,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { validateAdminSession } from "./admin-sessions.js";
+import { validateStaffSession, type StaffIdentity } from "./staff-sessions.js";
 import type { Request, Response } from "express";
 import { db, schema } from "./db.js";
 import { eq, and, gt } from "drizzle-orm";
@@ -14,6 +15,8 @@ export interface Context {
   adminToken?: string;
   userToken?: string;
   distributorToken?: string;
+  staffToken?: string;
+  staff?: StaffIdentity;
   req?: Request;
   res?: Response;
 }
@@ -22,6 +25,11 @@ const t = initTRPC.context<Context>().create({ transformer: superjson });
 
 export const router = t.router;
 export const publicProcedure = t.procedure;
+
+export const originCheckedProcedure = t.procedure.use(async ({ ctx, next }) => {
+  validateRequestOrigin(ctx.req);
+  return next({ ctx });
+});
 
 // ── Origin validation (defense-in-depth, complements SameSite cookies) ────────
 // CSRF protection relies on SameSite=strict (prod) / lax (dev) + same-origin deployment.
@@ -65,8 +73,17 @@ function validateRequestOrigin(req: Request | undefined): void {
   }
 }
 
+// ── Staff procedure (cookie only; roles come from staff_user_roles) ─────────
+export const staffProcedure = originCheckedProcedure.use(async ({ ctx, next }) => {
+  const staff = await validateStaffSession(ctx.staffToken);
+  if (!staff) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "يرجى تسجيل الدخول" });
+  }
+  return next({ ctx: { ...ctx, staff } });
+});
+
 // ── Admin procedure ──────────────────────────────────────────────────────────
-export const adminProcedure = t.procedure.use(async ({ ctx, next }) => {
+const requireAdminSession = t.middleware(async ({ ctx, next }) => {
   if (!ctx.adminToken || !(await validateAdminSession(ctx.adminToken))) {
     throw new TRPCError({
       code: "UNAUTHORIZED",
@@ -75,6 +92,11 @@ export const adminProcedure = t.procedure.use(async ({ ctx, next }) => {
   }
   return next({ ctx });
 });
+
+export const adminProcedure = t.procedure.use(requireAdminSession);
+
+/** Legacy admin session plus the same Origin check used by other cookie mutations. */
+export const adminOriginProcedure = originCheckedProcedure.use(requireAdminSession);
 
 // ── User procedure (cookie-based, Batch 2) ───────────────────────────────────
 export const userProcedure = t.procedure.use(async ({ ctx, next }) => {
