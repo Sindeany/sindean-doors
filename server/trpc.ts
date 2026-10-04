@@ -5,7 +5,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { validateAdminSession } from "./admin-sessions.js";
-import { validateStaffSession, type StaffIdentity } from "./staff-sessions.js";
+import { validateStaffSession, type StaffIdentity, type StaffRole } from "./staff-sessions.js";
 import type { Request, Response } from "express";
 import { db, schema } from "./db.js";
 import { eq, and, gt } from "drizzle-orm";
@@ -81,6 +81,31 @@ export const staffProcedure = originCheckedProcedure.use(async ({ ctx, next }) =
   }
   return next({ ctx: { ...ctx, staff } });
 });
+
+/**
+ * Role guards read ctx.staff.roles from the session just validated above.
+ * admin is not an implicit member of any other role.
+ */
+export function requireAnyStaffRole(roles: readonly StaffRole[]) {
+  if (roles.length === 0) {
+    throw new Error("requireAnyStaffRole needs at least one role");
+  }
+  const allowed = new Set(roles);
+  return staffProcedure.use(async ({ ctx, next }) => {
+    const staff = ctx.staff;
+    if (!staff) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: "يرجى تسجيل الدخول" });
+    }
+    if (!staff.roles.some((role) => allowed.has(role))) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "ليست لديك صلاحية هذا الإجراء" });
+    }
+    return next({ ctx: { ...ctx, staff } });
+  });
+}
+
+export function requireStaffRole(role: StaffRole) {
+  return requireAnyStaffRole([role]);
+}
 
 // ── Admin procedure ──────────────────────────────────────────────────────────
 const requireAdminSession = t.middleware(async ({ ctx, next }) => {
