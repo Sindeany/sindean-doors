@@ -1,6 +1,6 @@
-# Migration baseline — Phase 0B through Phase 0F
+# Migration baseline — Phase 0B through Phase 2B-1
 
-Phase 0B compared the local schema dump with both repository schemas. Phase 0C rehearsed the baseline on disposable local databases only. That rehearsal ran Drizzle `migrate` against `sindian_phase0c_empty` and `sindian_phase0c_copy`. `migrate` was not run against `sindian_doors` or production. Phase 0D copied those verified artifacts into `drizzle/migrations`. `drizzle/schema.ts` was not edited again. The repository `drizzle.config.ts` was not edited. TiDB Cloud was not contacted. Production was not inspected. `sindian_doors` was not modified. The Phase 0D commit records these files in the repository. It does not apply them to `sindian_doors` or production. Phase 0E adds migration `0001`, which changes the foreign key from `CASCADE` to `RESTRICT`. That migration was rehearsed on `sindian_phase0e_copy` only. Phase 0F then applied it to the verified local database `sindian_doors`. It has not been applied to production.
+Phase 0B compared the local schema dump with both repository schemas. Phase 0C rehearsed the baseline on disposable local databases only. That rehearsal ran Drizzle `migrate` against `sindian_phase0c_empty` and `sindian_phase0c_copy`. `migrate` was not run against `sindian_doors` or production. Phase 0D copied those verified artifacts into `drizzle/migrations`. `drizzle/schema.ts` was not edited again. The repository `drizzle.config.ts` was not edited. TiDB Cloud was not contacted. Production was not inspected. `sindian_doors` was not modified. The Phase 0D commit records these files in the repository. It does not apply them to `sindian_doors` or production. Phase 0E adds migration `0001`, which changes the foreign key from `CASCADE` to `RESTRICT`. That migration was rehearsed on `sindian_phase0e_copy` only. Phase 0F then applied it to the verified local database `sindian_doors`. It has not been applied to production. Phase 2B-1 later added the staff identity tables as migration `0002` and applied that migration to the same local database. Production remains untouched.
 
 Installed tools: `drizzle-orm` 0.45.2 and `drizzle-kit` 0.31.10. `package.json` still has `pnpm db:push` (`drizzle-kit push`) for local development. That command is not the production migration path. Production changes go through a reviewed file in `drizzle/migrations`, then a staging or test database, then verification, then `migrate`.
 
@@ -314,6 +314,40 @@ After migration the same 13 door orders and 2 work orders remained, with the sam
 
 A second `migrate` did not run `0001` again. Row counts stayed unchanged and `DELETE_RULE` stayed `RESTRICT`.
 
-`drizzle-kit generate` after this adoption reported no schema changes. No `0002` was created.
+`drizzle-kit generate` after this adoption reported no schema changes. No `0002` was created. That generate result describes the end of Phase 0F, before the staff-identity migration existed.
 
 This procedure is specific to this verified local database. It must not be repeated on production or on another existing database until that database has been inspected and shown to match the baseline. Production remains uninspected.
+
+## Phase 2B-1 staff identity schema
+
+Phase 2B-1 adds three internal identity tables and nothing else. `0000_lame_silverclaw.sql` and `0001_busy_gravity.sql` are unchanged. Their SHA-256 hashes are still `bdaa81aae4ca7738d35a74050ce9dcfb79b30396323bee8d6a25d5be88284308` and `f17039370d460ac98ef61fba0c5564cbb1fa18b0dda328832de497a5fd54c3c6`.
+
+`drizzle-kit generate` wrote `drizzle/migrations/0002_tricky_rafael_vega.sql`. The journal `when` is `1791128463901`. The file hash is `86e5a7e3011eebeaa02842d95d9e55d6d8395c8d5a5bcb7b3ccfe7b6eda53de6`. The SQL only creates `staff_users`, `staff_user_roles`, and `staff_sessions`, with their unique constraints, secondary indexes, and two foreign keys. Both foreign keys reference `staff_users.id` with `ON DELETE RESTRICT` and `ON UPDATE NO ACTION`. No existing application table is altered. There is no `qc` role. `staff_sessions` stores `token_hash` `varchar(64)` and has no raw token column.
+
+The migration was rehearsed first on disposable database `sindian_phase2b1_copy`, restored from a full backup of `sindian_doors`. `0000` and `0001` were skipped. `0002` ran once. Door orders stayed at 13, work orders stayed at 2, the links stayed `(1, 1)` and `(2, 2)`, and the work-order delete rule stayed `RESTRICT`. Duplicate `login_name`, duplicate `(user_id, role)`, role value `qc`, and both orphan foreign keys were rejected. A second `migrate` on that copy did not run `0002` again. `sindian_doors` was not modified during the rehearsal.
+
+Local adoption then applied the same migration to container `sindian-mysql`, database `sindian_doors`, MySQL 8.0.46. Windows `localhost:3306` is `hasaad-mysql` and was not used. TiDB Cloud was not contacted. `pnpm db:push` was not run.
+
+A new full backup was written before the change:
+
+`C:\Projects\sindian-phase0c-scratch\sindian_doors_pre_0002_apply.sql`
+
+86,695 bytes. It contains `INSERT INTO \`door_orders\``, `INSERT INTO \`work_orders\``, `ON DELETE RESTRICT`, and the `0000` and `0001` bookkeeping hashes. It does not contain `staff_users`.
+
+Before the write, `sindian_doors` had 39 application tables, 13 `door_orders`, 2 `work_orders`, links `(1, 1)` and `(2, 2)`, 0 nulls, 0 orphans, `DELETE_RULE = RESTRICT`, bookkeeping rows for `0000` and `0001` only, and no staff tables.
+
+`migrate` skipped `0000` and `0001` and ran `0002` once. The only application statements were the three `CREATE TABLE` statements, the two `RESTRICT` foreign keys, and the three secondary indexes. Existing table signatures did not change. After migration the same 13 door orders and 2 work orders remained, with the same links, 0 nulls, and 0 orphans. The work-order foreign key is still `RESTRICT`. Application tables are now 42. The three staff tables are empty.
+
+`__drizzle_migrations` contains exactly:
+
+| hash | created_at |
+| --- | --- |
+| `bdaa81aae4ca7738d35a74050ce9dcfb79b30396323bee8d6a25d5be88284308` | `1791111776489` |
+| `f17039370d460ac98ef61fba0c5564cbb1fa18b0dda328832de497a5fd54c3c6` | `1791124370914` |
+| `86e5a7e3011eebeaa02842d95d9e55d6d8395c8d5a5bcb7b3ccfe7b6eda53de6` | `1791128463901` |
+
+A second `migrate` sent only the bookkeeping `CREATE TABLE IF NOT EXISTS`, the bookkeeping `SELECT`, `BEGIN`, and `COMMIT`. It did not insert another `0002` row. Row counts stayed unchanged.
+
+`drizzle-kit generate` after this adoption reported no schema changes. No `0003` was created.
+
+This adoption is specific to this verified local database. Production remains uninspected. TiDB Cloud was not contacted.
