@@ -1,0 +1,2 @@
+drizzle/migrations/*.sql text eol=lf
+drizzle/migrations/meta/*.json text eol=lf

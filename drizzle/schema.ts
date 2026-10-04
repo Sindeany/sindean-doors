@@ -11,6 +11,7 @@ import {
   boolean,
   tinyint,
   timestamp,
+  index,
 } from "drizzle-orm/mysql-core";
 
 // ── Door Orders ──────────────────────────────────────────────────────────────
@@ -782,6 +783,9 @@ export type NewPackingOrder = typeof packingOrders.$inferInsert;
 // ── Work Orders ───────────────────────────────────────────────────────────────
 export const workOrders = mysqlTable("work_orders", {
   id: int("id").primaryKey().autoincrement(),
+  orderId: int("order_id")
+    .notNull()
+    .references(() => doorOrders.id, { onDelete: "cascade" }),
   woNumber: varchar("wo_number", { length: 50 }).notNull().unique(),
   poNumber: varchar("po_number", { length: 50 }).notNull(),
   distributorName: varchar("distributor_name", { length: 255 }).notNull(),
@@ -821,7 +825,9 @@ export const workOrders = mysqlTable("work_orders", {
   cancelledAt: bigint("cancelled_at", { mode: "number" }),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
-});
+}, (table) => ({
+  orderIdIdx: index("order_id_idx").on(table.orderId),
+}));
 
 export type WorkOrderRow = typeof workOrders.$inferSelect;
 export type NewWorkOrder = typeof workOrders.$inferInsert;

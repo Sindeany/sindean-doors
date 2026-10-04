@@ -73,7 +73,8 @@ ADMIN_INTERNAL_KEY=change-this-secret-key
 # إنشاء قاعدة البيانات في MySQL
 mysql -u root -p -e "CREATE DATABASE sindian_doors CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
-# تطبيق مخطط قاعدة البيانات
+# مزامنة مخطط التطوير المحلي فقط. ليس مسار نشر الإنتاج.
+# الإنتاج: migration مراجع في drizzle/migrations، ثم staging/test، ثم التحقق، ثم migrate.
 pnpm db:push
 ```
 
@@ -160,7 +161,7 @@ pnpm dev:server
 # تشغيل الـ client فقط
 pnpm dev:client
 
-# تطبيق تغييرات قاعدة البيانات
+# مزامنة مخطط التطوير المحلي فقط، وليس نشر الإنتاج
 pnpm db:push
 
 # فتح واجهة Drizzle Studio لإدارة قاعدة البيانات
