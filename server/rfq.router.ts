@@ -7,13 +7,7 @@ import { z } from "zod/v4";
 import { db, schema } from "./db.js";
 import { eq, and, inArray } from "drizzle-orm";
 import { invokeLLM } from "./llm.js";
-import {
-  t,
-  publicProcedure,
-  adminProcedure,
-  supplierProcedure,
-  router,
-} from "./trpc.js";
+import { adminProcedure, supplierProcedure, router } from "./trpc.js";
 
 // ── Zod Schemas ──────────────────────────────────────────────────────────────
 const rfqItemSchema = z.object({
@@ -34,7 +28,7 @@ const lineItemSchema = z.object({
 // ── Router ───────────────────────────────────────────────────────────────────
 export const rfqRouter = router({
   // ── إنشاء RFQ جديد ──────────────────────────────────────────────────────
-  create: publicProcedure
+  create: adminProcedure
     .input(
       z.object({
         title: z.string().min(3),
@@ -71,7 +65,7 @@ export const rfqRouter = router({
     }),
 
   // ── قائمة الـ RFQs ───────────────────────────────────────────────────────
-  list: publicProcedure
+  list: adminProcedure
     .input(
       z
         .object({
@@ -113,7 +107,7 @@ export const rfqRouter = router({
     }),
 
   // ── تفاصيل RFQ واحد ──────────────────────────────────────────────────────
-  getById: publicProcedure
+  getById: adminProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
       const rfq = await db.query.rfqs.findFirst({
@@ -144,7 +138,7 @@ export const rfqRouter = router({
     }),
 
   // ── تحديث RFQ ────────────────────────────────────────────────────────────
-  update: publicProcedure
+  update: adminProcedure
     .input(
       z.object({
         id: z.number(),
@@ -168,7 +162,7 @@ export const rfqRouter = router({
     }),
 
   // ── إرسال الدعوات للموردين ───────────────────────────────────────────────
-  sendInvitations: publicProcedure
+  sendInvitations: adminProcedure
     .input(
       z.object({
         rfqId: z.number(),
@@ -348,7 +342,7 @@ export const rfqRouter = router({
     }),
 
   // ── تقييم العروض بالذكاء الاصطناعي ─────────────────────────────────────
-  evaluateWithAI: publicProcedure
+  evaluateWithAI: adminProcedure
     .input(z.object({ rfqId: z.number() }))
     .mutation(async ({ input }) => {
       const rfq = await db.query.rfqs.findFirst({
@@ -492,7 +486,7 @@ ${i + 1}. ${q.supplierName}
     }),
 
   // ── ترسية العقد على مورد ─────────────────────────────────────────────────
-  award: publicProcedure
+  award: adminProcedure
     .input(
       z.object({
         rfqId: z.number(),
@@ -574,7 +568,7 @@ ${i + 1}. ${q.supplierName}
     }),
 
   // ── قائمة أوامر الشراء ───────────────────────────────────────────────────
-  listPurchaseOrders: publicProcedure
+  listPurchaseOrders: adminProcedure
     .input(
       z
         .object({
@@ -621,7 +615,7 @@ ${i + 1}. ${q.supplierName}
     }),
 
   // ── تحديث حالة أمر الشراء ───────────────────────────────────────────────
-  updatePOStatus: publicProcedure
+  updatePOStatus: adminProcedure
     .input(
       z.object({
         id: z.number(),
@@ -650,7 +644,7 @@ ${i + 1}. ${q.supplierName}
     }),
 
   // ── تحديث حالة عرض السعر يدوياً ─────────────────────────────────────────
-  updateQuoteStatus: publicProcedure
+  updateQuoteStatus: adminProcedure
     .input(
       z.object({
         id: z.number(),

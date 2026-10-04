@@ -11,6 +11,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import { appRouter } from "./routers.js";
+import { handleImageUpload } from "./upload-handler.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -88,60 +89,9 @@ async function startServer() {
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
   app.use("/uploads", express.static(uploadsDir));
 
-  // Upload endpoint: accepts base64 data URL (images only), saves to disk, returns /uploads/<filename>
-  // Allowed types: JPEG, PNG, WebP, GIF — max decoded size: 5 MB
-  const ALLOWED_MIME_TYPES: Record<string, string> = {
-    jpeg: "jpg",
-    jpg: "jpg",
-    png: "png",
-    webp: "webp",
-    gif: "gif",
-  };
-  const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB decoded
-
+  // Upload endpoint: admin session required. JPEG, PNG, WebP, GIF — max 5 MB.
   app.post("/api/upload", (req, res) => {
-    const { data, filename } = req.body as { data?: string; filename?: string };
-    if (!data || !data.startsWith("data:")) {
-      res.status(400).json({ error: "Invalid data" });
-      return;
-    }
-    const matches = data.match(/^data:([^;]+);base64,(.+)$/s);
-    if (!matches) {
-      res.status(400).json({ error: "Invalid base64 data URL" });
-      return;
-    }
-    const mimeType = matches[1].toLowerCase(); // e.g. "image/jpeg"
-    const base64Data = matches[2];
-
-    // ── Validate MIME type ────────────────────────────────────────────────
-    const subtype = mimeType.split("/")[1]; // "jpeg", "png", etc.
-    const mappedExt = subtype ? ALLOWED_MIME_TYPES[subtype] : undefined;
-    if (!mimeType.startsWith("image/") || !mappedExt) {
-      res.status(415).json({
-        error: "نوع الملف غير مدعوم. الأنواع المسموح بها: JPEG، PNG، WebP، GIF",
-      });
-      return;
-    }
-
-    // ── Validate file size ────────────────────────────────────────────────
-    const buffer = Buffer.from(base64Data, "base64");
-    if (buffer.length > MAX_UPLOAD_BYTES) {
-      res
-        .status(413)
-        .json({ error: "حجم الصورة يتجاوز الحد المسموح (5 ميغابايت)" });
-      return;
-    }
-
-    // ── Sanitize filename (no path separators, no hidden files) ──────────
-    const rawName = (filename ?? `upload-${Date.now()}`).replace(
-      /[^a-z0-9_-]/gi,
-      "_"
-    );
-    const safeName = rawName.replace(/^_+/, "") || `upload-${Date.now()}`;
-    const finalName = `${safeName}.${mappedExt}`;
-
-    fs.writeFileSync(path.join(uploadsDir, finalName), buffer);
-    res.json({ url: `/uploads/${finalName}` });
+    void handleImageUpload(req, res, uploadsDir);
   });
 
   // tRPC API

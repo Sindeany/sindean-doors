@@ -177,7 +177,8 @@ export const customerPortalRouter = router({
       return { id, ticketNumber, success: true };
     }),
 
-  // ── تتبع طلب بدون تسجيل دخول (بالجوال أو البريد) ──────────────────────
+  // Disabled until Phase 16. Phone or email is not authentication, and
+  // door_orders has no reliable customer user id yet.
   trackOrder: publicProcedure
     .input(
       z.object({
@@ -186,30 +187,10 @@ export const customerPortalRouter = router({
           .min(3, "يرجى إدخال رقم الجوال أو البريد الإلكتروني"),
       })
     )
-    .query(async ({ input }) => {
-      const { identifier } = input;
-
-      // ابحث بالبريد الإلكتروني أو الجوال
-      const isEmail = identifier.includes("@");
-      const orders = await db.query.doorOrders.findMany({
-        where: isEmail
-          ? eq(schema.doorOrders.customerEmail, identifier)
-          : eq(schema.doorOrders.customerPhone, identifier),
-        orderBy: [desc(schema.doorOrders.createdAt)],
+    .query(() => {
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "غير مصرح",
       });
-
-      // أرجع بيانات مختصرة فقط (لا أسعار، لا JSON داخلي)
-      return orders.map(o => ({
-        id: o.id,
-        productName: o.productName,
-        status: o.status,
-        workflowStage: o.workflowStage,
-        priority: o.priority,
-        expectedDelivery: o.expectedDelivery,
-        totalPrice: o.totalPrice,
-        paymentStatus: o.paymentStatus,
-        createdAt: o.createdAt,
-        updatedAt: o.updatedAt,
-      }));
     }),
 });

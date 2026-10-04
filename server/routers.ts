@@ -85,8 +85,9 @@ function getStatusForStage(stage: string): "confirmed" | "manufacturing" | "ship
 }
 
 const ordersRouter = router({
-  // Create a new door order
-  create: publicProcedure
+  // Temporary lockdown: admin session only. Customer sessions cannot create orders.
+  // Phases 2 and 3 replace this with Sales Coordinator / Sales Person authorization.
+  create: adminProcedure
     .input(
       z.object({
         customerName: z.string().min(1),
