@@ -12,6 +12,7 @@ import {
   tinyint,
   timestamp,
   index,
+  unique,
 } from "drizzle-orm/mysql-core";
 
 // ── Door Orders ──────────────────────────────────────────────────────────────
@@ -535,6 +536,74 @@ export const adminSessions = mysqlTable("admin_sessions", {
 });
 
 export type AdminSession = typeof adminSessions.$inferSelect;
+
+// ── Staff identity (internal factory users) ──────────────────────────────────
+// Individual workers. Team membership is a role assignment, not a separate table.
+export const staffUsers = mysqlTable("staff_users", {
+  id: int("id").primaryKey().autoincrement(),
+  name: varchar("name", { length: 255 }).notNull(),
+  loginName: varchar("login_name", { length: 100 }).notNull().unique(),
+  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+});
+
+export type StaffUser = typeof staffUsers.$inferSelect;
+export type NewStaffUser = typeof staffUsers.$inferInsert;
+
+export const staffUserRoles = mysqlTable(
+  "staff_user_roles",
+  {
+    id: int("id").primaryKey().autoincrement(),
+    userId: int("user_id")
+      .notNull()
+      .references(() => staffUsers.id, { onDelete: "restrict" }),
+    role: mysqlEnum("role", [
+      "admin",
+      "sales_coordinator",
+      "sales_person",
+      "stock_manager",
+      "production_manager",
+      "laminating",
+      "cutting",
+      "auto_line",
+      "frame_architrave",
+      "packing",
+    ]).notNull(),
+  },
+  (table) => ({
+    userIdIdx: index("user_id_idx").on(table.userId),
+    userIdRoleUnique: unique("staff_user_roles_user_id_role_unique").on(
+      table.userId,
+      table.role
+    ),
+  })
+);
+
+export type StaffUserRole = typeof staffUserRoles.$inferSelect;
+export type NewStaffUserRole = typeof staffUserRoles.$inferInsert;
+
+export const staffSessions = mysqlTable(
+  "staff_sessions",
+  {
+    id: int("id").primaryKey().autoincrement(),
+    userId: int("user_id")
+      .notNull()
+      .references(() => staffUsers.id, { onDelete: "restrict" }),
+    tokenHash: varchar("token_hash", { length: 64 }).notNull().unique(),
+    expiresAt: bigint("expires_at", { mode: "number" }).notNull(),
+    revokedAt: bigint("revoked_at", { mode: "number" }),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  },
+  (table) => ({
+    userIdIdx: index("user_id_idx").on(table.userId),
+    expiresAtIdx: index("expires_at_idx").on(table.expiresAt),
+  })
+);
+
+export type StaffSession = typeof staffSessions.$inferSelect;
+export type NewStaffSession = typeof staffSessions.$inferInsert;
 
 // ── Inventory Items ──────────────────────────────────────────────────────────
 // مواد المخزون الخام
