@@ -785,7 +785,7 @@ export const workOrders = mysqlTable("work_orders", {
   id: int("id").primaryKey().autoincrement(),
   orderId: int("order_id")
     .notNull()
-    .references(() => doorOrders.id, { onDelete: "cascade" }),
+    .references(() => doorOrders.id, { onDelete: "restrict" }),
   woNumber: varchar("wo_number", { length: 50 }).notNull().unique(),
   poNumber: varchar("po_number", { length: 50 }).notNull(),
   distributorName: varchar("distributor_name", { length: 255 }).notNull(),

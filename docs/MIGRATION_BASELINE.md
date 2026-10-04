@@ -1,6 +1,6 @@
-# Migration baseline — Phase 0B, Phase 0C, and Phase 0D
+# Migration baseline — Phase 0B through Phase 0E
 
-Phase 0B compared the local schema dump with both repository schemas. Phase 0C rehearsed the baseline on disposable local databases only. That rehearsal ran Drizzle `migrate` against `sindian_phase0c_empty` and `sindian_phase0c_copy`. `migrate` was not run against `sindian_doors` or production. Phase 0D copied those verified artifacts into `drizzle/migrations`. `drizzle/schema.ts` was not edited again. The repository `drizzle.config.ts` was not edited. TiDB Cloud was not contacted. Production was not inspected. `sindian_doors` was not modified. The Phase 0D commit records these files in the repository. It does not apply them to `sindian_doors` or production.
+Phase 0B compared the local schema dump with both repository schemas. Phase 0C rehearsed the baseline on disposable local databases only. That rehearsal ran Drizzle `migrate` against `sindian_phase0c_empty` and `sindian_phase0c_copy`. `migrate` was not run against `sindian_doors` or production. Phase 0D copied those verified artifacts into `drizzle/migrations`. `drizzle/schema.ts` was not edited again. The repository `drizzle.config.ts` was not edited. TiDB Cloud was not contacted. Production was not inspected. `sindian_doors` was not modified. The Phase 0D commit records these files in the repository. It does not apply them to `sindian_doors` or production. Phase 0E adds migration `0001`, which changes the foreign key from `CASCADE` to `RESTRICT`. That migration was rehearsed on `sindian_phase0e_copy` only. It has not been applied to `sindian_doors` or production.
 
 Installed tools: `drizzle-orm` 0.45.2 and `drizzle-kit` 0.31.10. `package.json` still has `pnpm db:push` (`drizzle-kit push`) for local development. That command is not the production migration path. Production changes go through a reviewed file in `drizzle/migrations`, then a staging or test database, then verification, then `migrate`.
 
@@ -247,7 +247,7 @@ Adopted files:
 - `drizzle/migrations/meta/_journal.json`
 - `drizzle/migrations/meta/0000_snapshot.json`
 
-The working-tree `drizzle/schema.ts` was left as it was. Its only difference from `HEAD` is `work_orders.order_id` `NOT NULL`, the foreign key to `door_orders.id` with `onDelete: "cascade"`, and `order_id_idx`.
+The working-tree `drizzle/schema.ts` was left as it was. Its only difference from the then-current `HEAD` was `work_orders.order_id` `NOT NULL`, the foreign key to `door_orders.id` with `onDelete: "cascade"`, and `order_id_idx`. Phase 0E later changes that delete rule to `restrict`.
 
 This baseline records the verified current local schema. `ON DELETE CASCADE` is the historical and current behavior of that schema. It is not the final desired rule. The next explicit schema migration changes `CASCADE` to `RESTRICT`. That migration is not in this baseline. Its journal `when` must be greater than `1791111776489`.
 
@@ -258,3 +258,31 @@ An existing database must never simply run this baseline `CREATE` SQL. The table
 A new empty database can apply the file through `migrate` because its bookkeeping table has no row. That path was rehearsed on `sindian_phase0c_empty` in Phase 0C. It was not repeated in Phase 0D.
 
 `package.json` still exposes `pnpm db:push` for local development. Production schema changes use the reviewed migration file, a staging or test database, verification, and then `migrate`. No package script was added that runs `migrate` against `DATABASE_URL`.
+
+## Phase 0E delete-rule correction
+
+Phase 0E is the first corrective migration after the baseline. `0000_lame_silverclaw.sql` is unchanged and still records `ON DELETE cascade`. Its SHA-256 is still `bdaa81aae4ca7738d35a74050ce9dcfb79b30396323bee8d6a25d5be88284308`.
+
+`drizzle/schema.ts` now declares `onDelete: "restrict"` for `work_orders.order_id`. `drizzle-kit generate` wrote `drizzle/migrations/0001_busy_gravity.sql`. The journal `when` is `1791124370914`, which is greater than the baseline `when`. The SQL is only:
+
+```sql
+ALTER TABLE `work_orders` DROP FOREIGN KEY `work_orders_order_id_door_orders_id_fk`;
+ALTER TABLE `work_orders` ADD CONSTRAINT `work_orders_order_id_door_orders_id_fk`
+  FOREIGN KEY (`order_id`) REFERENCES `door_orders`(`id`)
+  ON DELETE restrict ON UPDATE no action;
+```
+
+It does not drop `order_id`, recreate `work_orders`, change data, or drop `order_id_idx`. `ON UPDATE no action` matches the update rule the local foreign key already had.
+
+The rehearsal used a new database, `sindian_phase0e_copy`, restored from the Phase 0C full backup. It was not the earlier proof copy. Before `migrate` it had 39 application tables, 13 `door_orders`, 2 `work_orders`, links `(1, 1)` and `(2, 2)`, 0 nulls, 0 orphans, and `DELETE_RULE = CASCADE`. The baseline bookkeeping row was inserted first. `migrate` then skipped `0000` and ran `0001` once. No application `CREATE TABLE` from `0000` was sent. Afterward the row counts and links were unchanged, `order_id` was still `int NOT NULL`, `order_id_idx` remained, the foreign key still referenced `door_orders`, and `DELETE_RULE` was `RESTRICT`.
+
+`DELETE FROM door_orders WHERE id = 1` was rejected with `ERROR 1451 (23000)`. That door order and its work order remained. Counts stayed 13 and 2.
+
+A second `migrate` sent only the bookkeeping `CREATE TABLE IF NOT EXISTS`, the bookkeeping `SELECT`, `BEGIN`, and `COMMIT`. It did not run `0001` again. `__drizzle_migrations` kept two rows, ordered by `created_at`:
+
+| hash | created_at |
+| --- | --- |
+| `bdaa81aae4ca7738d35a74050ce9dcfb79b30396323bee8d6a25d5be88284308` | `1791111776489` |
+| `f17039370d460ac98ef61fba0c5564cbb1fa18b0dda328832de497a5fd54c3c6` | `1791124370914` |
+
+`sindian_doors` was not migrated. It still has 39 tables, 13 `door_orders`, 2 `work_orders`, `DELETE_RULE = CASCADE`, and no `__drizzle_migrations` table. Production and TiDB Cloud were not inspected. `pnpm db:push` was not run.
