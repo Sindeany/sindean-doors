@@ -644,25 +644,35 @@ export type NewInventoryItem = typeof inventoryItems.$inferInsert;
 
 // ── Inventory Transactions ───────────────────────────────────────────────────
 // حركات الدخول والخروج للمخزون
-export const inventoryTransactions = mysqlTable("inventory_transactions", {
-  id: int("id").primaryKey().autoincrement(),
-  itemId: int("item_id").notNull(),
-  type: mysqlEnum("type", [
-    "receive",
-    "consume",
-    "adjust",
-    "return",
-    "transfer",
-  ]).notNull(),
-  quantity: int("quantity").notNull(),
-  balanceBefore: int("balance_before").notNull(),
-  balanceAfter: int("balance_after").notNull(),
-  reference: varchar("reference", { length: 255 }).notNull().default(""),
-  note: text("note"),
-  performedBy: varchar("performed_by", { length: 255 }).notNull().default(""),
-  date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD
-  createdAt: bigint("created_at", { mode: "number" }).notNull(),
-});
+export const inventoryTransactions = mysqlTable(
+  "inventory_transactions",
+  {
+    id: int("id").primaryKey().autoincrement(),
+    itemId: int("item_id").notNull(),
+    type: mysqlEnum("type", [
+      "receive",
+      "consume",
+      "adjust",
+      "return",
+      "transfer",
+    ]).notNull(),
+    quantity: int("quantity").notNull(),
+    balanceBefore: int("balance_before").notNull(),
+    balanceAfter: int("balance_after").notNull(),
+    reference: varchar("reference", { length: 255 }).notNull().default(""),
+    note: text("note"),
+    performedBy: varchar("performed_by", { length: 255 }).notNull().default(""),
+    /** Authenticated staff actor. NULL for historical rows created before attribution. */
+    staffUserId: int("staff_user_id").references(() => staffUsers.id, {
+      onDelete: "restrict",
+    }),
+    date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  },
+  (table) => ({
+    staffUserIdIdx: index("staff_user_id_idx").on(table.staffUserId),
+  })
+);
 
 export type InventoryTransactionRow = typeof inventoryTransactions.$inferSelect;
 export type NewInventoryTransaction = typeof inventoryTransactions.$inferInsert;
