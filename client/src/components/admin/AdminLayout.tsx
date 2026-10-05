@@ -45,6 +45,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import type { Language } from "@/contexts/LanguageContext";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import StaffIdentityControl from "@/components/admin/StaffIdentityControl";
 
 interface NavItem {
   id: string;
@@ -674,6 +675,7 @@ export default function AdminLayout({
               <Layers className="w-3.5 h-3.5" />
               {siteLabel}
             </Link>
+            <StaffIdentityControl />
             {/* Logout */}
             <button
               onClick={handleAdminLogout}

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import { trpc, createTRPCClient } from "./lib/trpc";
+import { adminAreaShouldRedirectOnUnauthorized } from "./lib/staffIdentity";
 import "./index.css";
 
 function Root() {
@@ -23,19 +24,13 @@ function Root() {
           },
           mutations: {
             onError: (error: unknown) => {
+              // Staff login and logout failures stay on the current admin page.
+              // A missing staffSession is not an expired adminSession.
               if (
-                (error as { data?: { code?: string } })?.data?.code ===
-                "UNAUTHORIZED"
+                adminAreaShouldRedirectOnUnauthorized(error) &&
+                window.location.pathname.startsWith("/admin")
               ) {
-                // نفحص المسار الحالي قبل إعادة التوجيه لأن هذا المعالج global
-                // ويُطلَق على كل mutations في التطبيق (admin + user + supplier).
-                // نريد إعادة التوجيه إلى /admin/login فقط عندما يكون المستخدم
-                // فعلًا في منطقة الإدارة (جلسته انتهت أثناء العمل).
-                // في المسارات الأخرى، يتولى المعالج المحلي في كل Context عرض
-                // رسالة الخطأ دون أي إعادة توجيه.
-                if (window.location.pathname.startsWith("/admin")) {
-                  window.location.href = "/admin/login";
-                }
+                window.location.href = "/admin/login";
               }
             },
           },

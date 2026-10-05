@@ -616,4 +616,30 @@ describe("staff auth boundaries", () => {
   it("still accepts the legacy admin session", async () => {
     await expect(legacyAdmin().adminAuth.verify()).resolves.toEqual({ valid: true });
   });
+
+  it("keeps the legacy admin session when staff identity logs in and out", async () => {
+    await legacyAdmin().staffAuth.bootstrapFirstAdmin(bootstrapInput);
+    const adminBefore = staffState.adminSessions.map((row) => ({ ...row }));
+    const res = mockRes();
+
+    await caller({ adminToken: "valid-admin-token", res }).staffAuth.login({
+      loginName: "admin",
+      password: PASSWORD,
+    });
+
+    expect(res.cookies.map((cookie) => cookie.name)).toEqual(["staffSession"]);
+    expect(res.cleared).toEqual([]);
+    expect(staffState.adminSessions).toEqual(adminBefore);
+    await expect(caller({ adminToken: "valid-admin-token" }).adminAuth.verify()).resolves.toEqual({
+      valid: true,
+    });
+
+    const raw = res.cookies[0]?.value;
+    await caller({ adminToken: "valid-admin-token", staffToken: raw, res }).staffAuth.logout();
+    expect(res.cleared.map((cookie) => cookie.name)).toEqual(["staffSession"]);
+    expect(staffState.adminSessions).toEqual(adminBefore);
+    await expect(caller({ adminToken: "valid-admin-token" }).adminAuth.verify()).resolves.toEqual({
+      valid: true,
+    });
+  });
 });
