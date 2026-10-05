@@ -469,10 +469,12 @@ describe("staff login", () => {
   });
 
   it("rejects an invalid password, an unknown name, and an inactive user with one message", async () => {
-    const invalid = caller().staffAuth.login({ loginName: "admin", password: "wrong-password" });
-    const unknown = caller().staffAuth.login({ loginName: "missing", password: PASSWORD });
-    await expect(invalid).rejects.toMatchObject({ code: "UNAUTHORIZED", message: LOGIN_MESSAGE });
-    await expect(unknown).rejects.toMatchObject({ code: "UNAUTHORIZED", message: LOGIN_MESSAGE });
+    await expect(
+      caller().staffAuth.login({ loginName: "admin", password: "wrong-password" })
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED", message: LOGIN_MESSAGE });
+    await expect(
+      caller().staffAuth.login({ loginName: "missing", password: PASSWORD })
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED", message: LOGIN_MESSAGE });
     staffState.users[0].isActive = false;
     await expect(caller().staffAuth.login({ loginName: "admin", password: PASSWORD })).rejects.toMatchObject({
       code: "UNAUTHORIZED",

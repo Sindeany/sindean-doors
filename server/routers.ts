@@ -15,6 +15,7 @@ import { zatcaRouter } from "./zatca.router.js";
 import { createInvoiceFromOrder } from "./zatca.service.js";
 import { adminAuthRouter } from "./admin.router.js";
 import { staffAuthRouter } from "./staff.router.js";
+import { staffManagementRouter } from "./staff-management.router.js";
 import { usersRouter } from "./users.router.js";
 import { inventoryRouter } from "./inventory.router.js";
 import { distributorsAdminRouter } from "./distributors-admin.router.js";
@@ -691,6 +692,7 @@ export const appRouter = router({
   zatca: zatcaRouter,
   adminAuth: adminAuthRouter,
   staffAuth: staffAuthRouter,
+  staffManagement: staffManagementRouter,
   users: usersRouter,
   inventory: inventoryRouter,
   distributorsAdmin: distributorsAdminRouter,
