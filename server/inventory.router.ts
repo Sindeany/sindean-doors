@@ -32,6 +32,9 @@ const itemInput = z.object({
   notes:         z.string().optional(),
 });
 
+/** Item master edits — stock balance changes only via inventory movements. */
+export const itemUpdateInput = itemInput.omit({ currentQty: true });
+
 function calcStatus(qty: number, minQty: number): "in_stock" | "low_stock" | "critical" | "out_of_stock" {
   if (qty <= 0) return "out_of_stock";
   if (qty <= minQty * 0.5) return "critical";
@@ -85,9 +88,9 @@ export const inventoryRouter = router({
       return { id: result.insertId };
     }),
 
-  // تحديث مادة موجودة
+  // تحديث مادة موجودة (لا يغيّر currentQty — الحركات فقط)
   update: adminProcedure
-    .input(z.object({ id: z.number().int() }).merge(itemInput))
+    .input(z.object({ id: z.number().int() }).merge(itemUpdateInput))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
       await db.update(schema.inventoryItems)

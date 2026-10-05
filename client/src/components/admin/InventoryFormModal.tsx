@@ -154,8 +154,36 @@ export default function InventoryFormModal({ item, onClose, onSave }: Props) {
           <section>
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">الكميات والحدود</h3>
             <div className="grid grid-cols-2 gap-3">
+              {isNew ? (
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">الكمية الحالية *</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="1"
+                    required
+                    value={form.currentQty ?? 0}
+                    onChange={e => set("currentQty", parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                    className="rounded-xl border-gray-200"
+                  />
+                </div>
+              ) : (
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">الكمية الحالية</label>
+                  <Input
+                    type="number"
+                    readOnly
+                    disabled
+                    value={form.currentQty ?? 0}
+                    className="rounded-xl border-gray-200 bg-gray-50 text-gray-700"
+                  />
+                  <p className="text-xs text-gray-500 mt-1.5">
+                    الرصيد الحالي يُعدّل من خلال حركات المخزون فقط
+                  </p>
+                </div>
+              )}
               {[
-                { key: "currentQty", label: "الكمية الحالية *", placeholder: "0" },
                 { key: "minQty",     label: "الحد الأدنى *",    placeholder: "50" },
                 { key: "maxQty",     label: "الحد الأقصى *",    placeholder: "500" },
                 { key: "reorderQty", label: "كمية إعادة الطلب", placeholder: "150" },

@@ -296,7 +296,11 @@ export default function AdminInventory() {
       // مادة جديدة
       createMutation.mutate(payload, { onSuccess: () => toast.success("تم إضافة المادة بنجاح") });
     } else {
-      updateMutation.mutate({ id: numericId, ...payload }, { onSuccess: () => toast.success("تم حفظ التعديلات بنجاح") });
+      const { currentQty: _ignoredQty, ...metadata } = payload;
+      updateMutation.mutate(
+        { id: numericId, ...metadata },
+        { onSuccess: () => toast.success("تم حفظ التعديلات بنجاح") }
+      );
     }
   };
 
