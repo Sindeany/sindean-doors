@@ -13,13 +13,13 @@ const categoryEnum = z.enum([
   "hinge", "accessory", "packaging", "chemical",
 ]);
 
-const itemInput = z.object({
+/** Item master metadata — balance is never client-controlled on create/update. */
+const itemMetadataInput = z.object({
   code:          z.string().min(1).max(100),
   name:          z.string().min(1).max(255),
   nameEn:        z.string().max(255).optional(),
   category:      categoryEnum,
   unit:          z.string().min(1).max(50),
-  currentQty:    z.number().int().min(0),
   minQty:        z.number().int().min(0),
   maxQty:        z.number().int().min(0),
   reorderQty:    z.number().int().min(0),
@@ -32,8 +32,8 @@ const itemInput = z.object({
   notes:         z.string().optional(),
 });
 
-/** Item master edits — stock balance changes only via inventory movements. */
-export const itemUpdateInput = itemInput.omit({ currentQty: true });
+export const itemCreateInput = itemMetadataInput;
+export const itemUpdateInput = itemMetadataInput;
 
 function calcStatus(qty: number, minQty: number): "in_stock" | "low_stock" | "critical" | "out_of_stock" {
   if (qty <= 0) return "out_of_stock";
@@ -75,13 +75,14 @@ export const inventoryRouter = router({
     }));
   }),
 
-  // إنشاء مادة جديدة
+  // إنشاء مادة جديدة (currentQty = 0 — الرصيد الافتتاحي عبر حركة مخزون)
   create: adminProcedure
-    .input(itemInput)
+    .input(itemCreateInput)
     .mutation(async ({ input }) => {
       const now = Date.now();
       const [result] = await db.insert(schema.inventoryItems).values({
         ...input,
+        currentQty: 0,
         createdAt: now,
         updatedAt: now,
       });

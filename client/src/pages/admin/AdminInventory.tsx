@@ -292,11 +292,10 @@ export default function AdminInventory() {
       lastReceived: updated.lastReceived, lastConsumed: updated.lastConsumed,
       notes: updated.notes,
     };
+    const { currentQty: _ignoredQty, ...metadata } = payload;
     if (isNaN(numericId)) {
-      // مادة جديدة
-      createMutation.mutate(payload, { onSuccess: () => toast.success("تم إضافة المادة بنجاح") });
+      createMutation.mutate(metadata, { onSuccess: () => toast.success("تم إضافة المادة بنجاح") });
     } else {
-      const { currentQty: _ignoredQty, ...metadata } = payload;
       updateMutation.mutate(
         { id: numericId, ...metadata },
         { onSuccess: () => toast.success("تم حفظ التعديلات بنجاح") }

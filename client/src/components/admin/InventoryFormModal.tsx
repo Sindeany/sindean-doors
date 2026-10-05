@@ -155,18 +155,18 @@ export default function InventoryFormModal({ item, onClose, onSave }: Props) {
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">الكميات والحدود</h3>
             <div className="grid grid-cols-2 gap-3">
               {isNew ? (
-                <div>
-                  <label className="text-xs font-semibold text-gray-600 mb-1 block">الكمية الحالية *</label>
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">الرصيد الافتتاحي</label>
                   <Input
                     type="number"
-                    min={0}
-                    step="1"
-                    required
-                    value={form.currentQty ?? 0}
-                    onChange={e => set("currentQty", parseFloat(e.target.value) || 0)}
-                    placeholder="0"
-                    className="rounded-xl border-gray-200"
+                    readOnly
+                    disabled
+                    value={0}
+                    className="rounded-xl border-gray-200 bg-gray-50 text-gray-700"
                   />
+                  <p className="text-xs text-gray-500 mt-1.5">
+                    يبدأ الصنف برصيد صفر. أدخل الرصيد الافتتاحي من خلال حركة استلام أو تعديل مخزون بعد إنشاء الصنف.
+                  </p>
                 </div>
               ) : (
                 <div className="col-span-2">
