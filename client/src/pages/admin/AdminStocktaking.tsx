@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import AdminLayout from "@/components/admin/AdminLayout";
 import { trpc } from "@/lib/trpc";
+import { staffIdentityFromServer } from "@/lib/staffIdentity";
 import type { MaterialCategory } from "@/pages/admin/AdminInventory";
 
 // ─── أنواع الجرد ──────────────────────────────────────────────
@@ -73,7 +74,6 @@ const CATEGORY_COLORS: Record<MaterialCategory, string> = {
   chemical:  "oklch(0.45 0.10 280)",
 };
 
-const SUPERVISORS = ["م. خالد العتيبي", "م. سعد الغامدي", "م. فهد الحربي", "م. عبدالله الزهراني", "م. محمد العسيري"];
 const LOCATIONS = ["المستودع الرئيسي", "مستودع A", "مستودع B", "مستودع C", "مستودع D", "مستودع E", "جميع المستودعات"];
 
 // ─── دالة توليد تقرير PDF ─────────────────────────────────────
@@ -139,7 +139,7 @@ function printStocktakingReport(session: StocktakingSession) {
 
   <div class="meta">
     <div class="meta-card"><div class="meta-label">تاريخ الجرد</div><div class="meta-value">${session.date}</div></div>
-    <div class="meta-card"><div class="meta-label">المشرف المسؤول</div><div class="meta-value">${session.performedBy}</div></div>
+    <div class="meta-card"><div class="meta-label">أمين المخزون</div><div class="meta-value">${session.performedBy}</div></div>
     <div class="meta-card"><div class="meta-label">الموقع</div><div class="meta-value">${session.location}</div></div>
     <div class="meta-card"><div class="meta-label">الحالة</div><div class="meta-value">${session.status === "approved" ? "✅ معتمد" : session.status === "completed" ? "📋 مكتمل" : "📝 مسودة"}</div></div>
   </div>
@@ -201,7 +201,6 @@ export default function AdminStocktaking() {
 
   // ── حالة الجلسة ──
   const [sessionId]         = useState(`ST-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`);
-  const [performedBy, setPerformedBy] = useState("");
   const [location, setLocation]       = useState("جميع المستودعات");
   const [sessionDate, setSessionDate] = useState(today);
   const [sessionStatus, setSessionStatus] = useState<"draft" | "completed" | "approved">("draft");
@@ -216,6 +215,18 @@ export default function AdminStocktaking() {
   const [showOnlyDiff, setShowOnlyDiff] = useState(false);
 
   // ── tRPC ──
+  const meQuery = trpc.staffAuth.me.useQuery(undefined, {
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const identity = meQuery.isSuccess ? staffIdentityFromServer(meQuery.data) : null;
+  const canAdjust = Boolean(identity?.roles.includes("stock_manager"));
+  const stocktakeAccessMessage = !identity
+    ? "يلزم تسجيل هوية الموظف لاعتماد الجرد"
+    : !canAdjust
+      ? "اعتماد الجرد متاح لأمين المخزون فقط"
+      : null;
+
   const { data: dbItems, isLoading, refetch } = trpc.inventory.list.useQuery(undefined, { refetchInterval: false });
   const utils = trpc.useUtils();
   const loadedFromDB = useRef(false);
@@ -310,7 +321,10 @@ export default function AdminStocktaking() {
 
   // ── اعتماد الجرد وتحديث المخزون ──
   function handleApprove() {
-    if (!performedBy) { toast.error("أدخل اسم المشرف المسؤول"); return; }
+    if (!canAdjust) {
+      toast.error(stocktakeAccessMessage ?? "اعتماد الجرد متاح لأمين المخزون فقط");
+      return;
+    }
     const unfilled = entries.filter(e => e.actualQty === "");
     if (unfilled.length > 0) {
       toast.error(`يوجد ${unfilled.length} مادة لم يُدخل رصيدها الفعلي بعد`);
@@ -318,7 +332,6 @@ export default function AdminStocktaking() {
     }
     bulkAdjustMutation.mutate({
       sessionRef:  sessionId,
-      performedBy,
       date:        sessionDate,
       adjustments: entries.map(e => ({
         itemId:    parseInt(e.itemId),
@@ -339,7 +352,7 @@ export default function AdminStocktaking() {
     const session: StocktakingSession = {
       id: sessionId,
       date: sessionDate,
-      performedBy: performedBy || "غير محدد",
+      performedBy: identity?.name ?? "غير محدد",
       location,
       entries,
       status: sessionStatus,
@@ -409,7 +422,7 @@ export default function AdminStocktaking() {
                 <Button variant="outline" size="sm" onClick={handleSaveDraft} className="gap-2">
                   <Save className="w-4 h-4" /> حفظ مسودة
                 </Button>
-                <Button size="sm" onClick={handleApprove} disabled={bulkAdjustMutation.isPending} className="gap-2"
+                <Button size="sm" onClick={handleApprove} disabled={bulkAdjustMutation.isPending || !canAdjust} className="gap-2"
                   style={{ background: "oklch(0.38 0.06 160)", color: "white" }}>
                   {bulkAdjustMutation.isPending
                     ? <RefreshCw className="w-4 h-4 animate-spin" />
@@ -443,16 +456,18 @@ export default function AdminStocktaking() {
               </div>
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1.5">المشرف المسؤول <span className="text-red-500">*</span></label>
+              <label className="block text-xs font-bold text-gray-600 mb-1.5">أمين المخزون</label>
               <div className="relative">
                 <User className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <select value={performedBy} onChange={e => setPerformedBy(e.target.value)}
-                  disabled={sessionStatus === "approved"}
-                  className="w-full pr-9 pl-3 py-2 text-sm border border-gray-200 rounded-lg bg-white text-right appearance-none focus:outline-none focus:ring-2 focus:ring-green-500">
-                  <option value="">اختر المشرف...</option>
-                  {SUPERVISORS.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
+                <Input
+                  readOnly
+                  value={identity?.name ?? "—"}
+                  className="pr-9 text-right text-sm bg-gray-50"
+                />
               </div>
+              {stocktakeAccessMessage && (
+                <p className="text-xs text-amber-700 mt-1.5">{stocktakeAccessMessage}</p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1.5">الموقع / المستودع</label>

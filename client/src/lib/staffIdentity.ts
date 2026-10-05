@@ -17,7 +17,10 @@ export function isStaffAuthProcedure(path: string | undefined): boolean {
 }
 
 /** Staff-gated mutations inside the legacy admin area. A missing staffSession must not expire adminSession. */
-const STAFF_GATED_ADMIN_PROCEDURES = new Set(["inventory.addTransaction"]);
+const STAFF_GATED_ADMIN_PROCEDURES = new Set([
+  "inventory.addTransaction",
+  "inventory.bulkAdjustForStocktaking",
+]);
 
 export function isStaffGatedAdminProcedure(path: string | undefined): boolean {
   return typeof path === "string" && STAFF_GATED_ADMIN_PROCEDURES.has(path);

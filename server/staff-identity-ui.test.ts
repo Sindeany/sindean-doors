@@ -90,6 +90,7 @@ describe("admin area redirects", () => {
 
   it("keeps the admin area open when addTransaction lacks a staff session", () => {
     expect(isStaffGatedAdminProcedure("inventory.addTransaction")).toBe(true);
+    expect(isStaffGatedAdminProcedure("inventory.bulkAdjustForStocktaking")).toBe(true);
     expect(isStaffGatedAdminProcedure("inventory.list")).toBe(false);
     expect(
       adminAreaShouldRedirectOnUnauthorized({
@@ -99,6 +100,11 @@ describe("admin area redirects", () => {
     expect(
       adminAreaShouldRedirectOnUnauthorized({
         data: { code: "FORBIDDEN", path: "inventory.addTransaction" },
+      })
+    ).toBe(false);
+    expect(
+      adminAreaShouldRedirectOnUnauthorized({
+        data: { code: "UNAUTHORIZED", path: "inventory.bulkAdjustForStocktaking" },
       })
     ).toBe(false);
   });

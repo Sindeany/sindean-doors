@@ -246,53 +246,85 @@ export const inventoryRouter = router({
       return { ok: true, warnings };
     }),
 
-  // تعديل جماعي للأرصدة عند اعتماد الجرد الدوري
-  bulkAdjustForStocktaking: adminProcedure
+  // اعتماد الجرد: stock_manager فقط، دفعة واحدة داخل معاملة مع قفل الصفوف.
+  bulkAdjustForStocktaking: requireStaffRole("stock_manager")
     .input(z.object({
-      sessionRef:  z.string().max(255),
-      performedBy: z.string().max(255).default("مشرف الجرد"),
+      sessionRef:  z.string().min(1).max(255),
       date:        z.string().max(10),
       adjustments: z.array(z.object({
         itemId:    z.number().int(),
         actualQty: z.number().int().min(0),
         note:      z.string().optional(),
-      })),
+      })).min(1),
     }))
-    .mutation(async ({ input }) => {
-      const now = Date.now();
-      let count = 0;
-
+    .mutation(async ({ input, ctx }) => {
+      const seen = new Set<number>();
       for (const adj of input.adjustments) {
-        const item = await db.query.inventoryItems.findFirst({
-          where: eq(schema.inventoryItems.id, adj.itemId),
-        });
-        if (!item) continue;
-
-        const balanceBefore = item.currentQty;
-        const balanceAfter  = adj.actualQty;
-        const delta         = balanceAfter - balanceBefore;
-
-        await db.insert(schema.inventoryTransactions).values({
-          itemId:        adj.itemId,
-          type:          "adjust",
-          quantity:      delta,
-          balanceBefore,
-          balanceAfter,
-          reference:     input.sessionRef,
-          note:          adj.note ?? null,
-          performedBy:   input.performedBy,
-          date:          input.date,
-          createdAt:     now,
-        });
-
-        await db.update(schema.inventoryItems)
-          .set({ currentQty: balanceAfter, updatedAt: now })
-          .where(eq(schema.inventoryItems.id, adj.itemId));
-
-        count++;
+        if (seen.has(adj.itemId)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "لا يمكن تكرار نفس المادة في جلسة الجرد",
+          });
+        }
+        seen.add(adj.itemId);
       }
 
-      return { ok: true, count };
+      const sortedIds = [...seen].sort((a, b) => a - b);
+      const byId = new Map(input.adjustments.map((adj) => [adj.itemId, adj]));
+
+      return db.transaction(async (tx) => {
+        const locked = new Map<number, { currentQty: number }>();
+        for (const itemId of sortedIds) {
+          const [item] = await tx
+            .select()
+            .from(schema.inventoryItems)
+            .where(eq(schema.inventoryItems.id, itemId))
+            .for("update")
+            .limit(1);
+          if (!item) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "مادة غير موجودة في المخزون",
+            });
+          }
+          locked.set(itemId, item);
+        }
+
+        const now = Date.now();
+        let count = 0;
+        let unchanged = 0;
+        for (const itemId of sortedIds) {
+          const item = locked.get(itemId)!;
+          const adj = byId.get(itemId)!;
+          const balanceBefore = item.currentQty;
+          const balanceAfter = adj.actualQty;
+          const delta = balanceAfter - balanceBefore;
+          if (delta === 0) {
+            unchanged += 1;
+            continue;
+          }
+
+          await tx.insert(schema.inventoryTransactions).values({
+            itemId,
+            type: "adjust",
+            quantity: delta,
+            balanceBefore,
+            balanceAfter,
+            reference: input.sessionRef,
+            note: adj.note ?? null,
+            performedBy: ctx.staff.name,
+            staffUserId: ctx.staff.userId,
+            date: input.date,
+            createdAt: now,
+          });
+          await tx.update(schema.inventoryItems)
+            .set({ currentQty: balanceAfter, updatedAt: now })
+            .where(eq(schema.inventoryItems.id, itemId));
+          count += 1;
+        }
+
+        return { ok: true, count, unchanged };
+      });
     }),
 
   // بذر البيانات التجريبية (للإعداد الأول فقط)
