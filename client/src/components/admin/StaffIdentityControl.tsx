@@ -2,7 +2,8 @@
  * Additive staff login. It creates staffSession only.
  * The legacy adminSession cookie is left untouched.
  */
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { STAFF_IDENTITY_OPEN_EVENT } from "@/lib/staffIdentity";
 import { BadgeCheck, LogOut } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { staffIdentityFromServer } from "@/lib/staffIdentity";
@@ -67,6 +68,12 @@ export default function StaffIdentityControl() {
   const [loginName, setLoginName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const openPanel = () => setOpen(true);
+    window.addEventListener(STAFF_IDENTITY_OPEN_EVENT, openPanel);
+    return () => window.removeEventListener(STAFF_IDENTITY_OPEN_EVENT, openPanel);
+  }, []);
 
   const me = trpc.staffAuth.me.useQuery(undefined, {
     retry: false,

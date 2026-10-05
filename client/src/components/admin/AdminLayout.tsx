@@ -40,6 +40,7 @@ import {
   FileText,
   BookOpen,
   Factory,
+  UserCog,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
@@ -272,6 +273,14 @@ const NAV_ITEMS: NavItem[] = [
     labelZh: "采购发票",
     icon: <ShoppingCart className="w-5 h-5" />,
     path: "/admin/purchases",
+  },
+  {
+    id: "staff",
+    labelAr: "إدارة الموظفين",
+    labelEn: "Staff management",
+    labelZh: "员工管理",
+    icon: <UserCog className="w-5 h-5" />,
+    path: "/admin/staff",
   },
   {
     id: "settings",

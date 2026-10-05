@@ -9,6 +9,9 @@ export type StaffMeIdentity = {
   roles: readonly string[];
 };
 
+/** Dispatched to open the header Staff Identity panel without reading cookies. */
+export const STAFF_IDENTITY_OPEN_EVENT = "staff-identity:open";
+
 export function isStaffAuthProcedure(path: string | undefined): boolean {
   return typeof path === "string" && path.startsWith("staffAuth.");
 }

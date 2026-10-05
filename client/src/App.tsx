@@ -65,6 +65,7 @@ import AdminZATCAInvoices from "./pages/admin/AdminZATCAInvoices";
 import AdminAccounting from "./pages/admin/AdminAccounting";
 import AdminPurchases from "./pages/admin/AdminPurchases";
 import AdminBIDashboard from "./pages/admin/AdminBIDashboard";
+import AdminStaffManagement from "./pages/admin/AdminStaffManagement";
 import CustomerPortal from "./pages/customer/CustomerPortal";
 
 // Supplier portal
@@ -149,6 +150,7 @@ function Router() {
         <Route path={"/admin/complaints"} component={AdminComplaints} />
         <Route path={"/admin/products"} component={AdminProducts} />
         <Route path={"/admin/reports"} component={AdminReports} />
+        <Route path={"/admin/staff"} component={AdminStaffManagement} />
         <Route path={"/admin/settings"} component={AdminSettings} />
         <Route path={"/admin/products/new"} component={AdminProductForm} />
         <Route path={"/admin/products/edit/:id"} component={AdminProductForm} />
