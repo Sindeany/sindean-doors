@@ -55,9 +55,8 @@ import type {
 import { DEPARTMENTS } from "@/pages/admin/AdminWorkOrders";
 import {
   checkMaterialAvailability,
-  consumeMaterialsForWorkOrder,
 } from "@/stores/inventoryStore";
-import type { MaterialConsumption } from "@/stores/inventoryStore";
+
 
 // ─── أنواع النموذج ────────────────────────────────────────────
 interface WizardFormData {
@@ -1093,8 +1092,8 @@ function Step3Departments({
           <div className="mt-3 flex items-start gap-2 bg-amber-100/60 rounded-xl px-3 py-2">
             <AlertTriangle className="w-3.5 h-3.5 text-amber-700 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-amber-800">
-              يمكنك الإصدار مع وجود نقص في المخزون، لكن يُنصح بتأمين المواد قبل
-              بدء الإنتاج. سيتم خصم المتوفر فقط وتسجيل النقص في سجل المخزون.
+              يمكنك إنشاء أمر التشغيل مع وجود نقص في المخزون، لكن يُنصح بتأمين
+              المواد قبل بدء الإنتاج. صرف المواد يتم لاحقًا من خلال إصدار المواد.
             </p>
           </div>
         )}
@@ -1584,46 +1583,10 @@ export default function CreateWorkOrderWizard({
 
     onCreated({ woNumber });
 
-    // ── خصم المواد الخام تلقائياً من المخزون ──────────────────────────────────
-    const doorColors = form.doors.map(d => d.doorColor);
-    const frameColors = form.doors.map(d => d.frameColor);
-    const lockTypes = form.doors.map(d => d.lockType);
-    const hingeTypes = form.doors.map(d => d.hingeType);
-    const edgeTypes = form.doors.map(d => d.edgeType);
-    const hasFilm = form.doors.some(d => d.edgeType === "film");
-
-    const consumeResult = consumeMaterialsForWorkOrder(
-      {
-        totalDoors,
-        doorColors,
-        frameColors,
-        lockTypes,
-        hingeTypes,
-        edgeTypes,
-        hasFilm,
-      },
-      woNumber,
-      form.supervisorName || "نظام أوامر التشغيل"
-    );
-
-    // إظهار النتيجة للمستخدم
-    toast.success(`تم إصدار أمر التشغيل ${woNumber} بنجاح`, {
-      description: `${totalDoors} باب · ${form.deptTasks.length} أقسام · تم خصم المواد من المخزون`,
+    toast.success(`تم إنشاء أمر التشغيل ${woNumber} بنجاح`, {
+      description:
+        `${totalDoors} باب · ${form.deptTasks.length} أقسام · صرف المواد يتم لاحقًا من خلال إصدار المواد.`,
     });
-
-    // تنبيهات النقص إن وجدت
-    if (consumeResult.warnings.length > 0) {
-      setTimeout(() => {
-        consumeResult.warnings.forEach((w, i) => {
-          setTimeout(() => {
-            toast.warning("المخزون: تنبيه", {
-              description: w,
-              duration: 6000,
-            });
-          }, i * 400);
-        });
-      }, 500);
-    }
 
     onClose();
   }
