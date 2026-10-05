@@ -315,6 +315,7 @@ export default function AdminInventory() {
         tx.type === "receive" ? "تم تسجيل الاستلام بنجاح" :
         tx.type === "consume" ? "تم تسجيل الصرف بنجاح" : "تم تسجيل التعديل بنجاح"
       ),
+      onError: (err) => toast.error(err.message),
     });
   };
 

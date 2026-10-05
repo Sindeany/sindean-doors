@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   adminAreaShouldRedirectOnUnauthorized,
   isStaffAuthProcedure,
+  isStaffGatedAdminProcedure,
   staffBrowserStoragePlan,
   staffIdentityFromServer,
 } from "@/lib/staffIdentity";
@@ -80,6 +81,26 @@ describe("admin area redirects", () => {
         data: { code: "UNAUTHORIZED", path: "orders.updateStatus" },
       })
     ).toBe(true);
+    expect(
+      adminAreaShouldRedirectOnUnauthorized({
+        data: { code: "UNAUTHORIZED", path: "inventory.list" },
+      })
+    ).toBe(true);
+  });
+
+  it("keeps the admin area open when addTransaction lacks a staff session", () => {
+    expect(isStaffGatedAdminProcedure("inventory.addTransaction")).toBe(true);
+    expect(isStaffGatedAdminProcedure("inventory.list")).toBe(false);
+    expect(
+      adminAreaShouldRedirectOnUnauthorized({
+        data: { code: "UNAUTHORIZED", path: "inventory.addTransaction" },
+      })
+    ).toBe(false);
+    expect(
+      adminAreaShouldRedirectOnUnauthorized({
+        data: { code: "FORBIDDEN", path: "inventory.addTransaction" },
+      })
+    ).toBe(false);
   });
 });
 

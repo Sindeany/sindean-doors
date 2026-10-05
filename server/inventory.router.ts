@@ -1,10 +1,11 @@
 // ============================================================
 // inventory.router.ts - مسارات إدارة المخزون
 // ============================================================
+import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 import { db, schema } from "./db.js";
 import { eq, desc } from "drizzle-orm";
-import { router, adminProcedure } from "./trpc.js";
+import { router, adminProcedure, requireStaffRole } from "./trpc.js";
 
 // ─── Zod schemas ─────────────────────────────────────────────
 const categoryEnum = z.enum([
@@ -107,7 +108,8 @@ export const inventoryRouter = router({
     }),
 
   // تسجيل حركة (استلام / صرف / تعديل / إرجاع / نقل)
-  addTransaction: adminProcedure
+  // stock_manager only. staff_user_id is the audit actor; performed_by is the staff name.
+  addTransaction: requireStaffRole("stock_manager")
     .input(z.object({
       itemId:      z.number().int(),
       type:        z.enum(["receive", "consume", "adjust", "return", "transfer"]),
@@ -117,54 +119,83 @@ export const inventoryRouter = router({
       performedBy: z.string().max(255).default("الإدارة"),
       date:        z.string().max(10),
     }))
-    .mutation(async ({ input }) => {
-      const item = await db.query.inventoryItems.findFirst({
-        where: eq(schema.inventoryItems.id, input.itemId),
-      });
-      if (!item) throw new Error("المادة غير موجودة");
-
-      const balanceBefore = item.currentQty;
-      let newQty: number;
-      if (input.type === "receive" || input.type === "return") {
-        newQty = balanceBefore + input.quantity;
-      } else if (input.type === "consume" || input.type === "transfer") {
-        newQty = balanceBefore - input.quantity;
-      } else {
-        // adjust: quantity is the new absolute value delta (can be negative)
-        newQty = balanceBefore + input.quantity;
+    .mutation(async ({ input, ctx }) => {
+      const requiresPositiveQuantity =
+        input.type === "receive" ||
+        input.type === "return" ||
+        input.type === "consume" ||
+        input.type === "transfer";
+      if (requiresPositiveQuantity && input.quantity <= 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "الكمية يجب أن تكون أكبر من صفر",
+        });
       }
-      newQty = Math.max(0, newQty);
+      if (input.type === "adjust" && input.quantity === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "لا يمكن تسجيل تعديل بقيمة صفر",
+        });
+      }
 
-      const now = Date.now();
-      await db.insert(schema.inventoryTransactions).values({
-        itemId:        input.itemId,
-        type:          input.type,
-        quantity:      input.quantity,
-        balanceBefore,
-        balanceAfter:  newQty,
-        reference:     input.reference,
-        note:          input.note,
-        performedBy:   input.performedBy,
-        date:          input.date,
-        createdAt:     now,
+      return db.transaction(async (tx) => {
+        const [item] = await tx
+          .select()
+          .from(schema.inventoryItems)
+          .where(eq(schema.inventoryItems.id, input.itemId))
+          .for("update")
+          .limit(1);
+        if (!item) throw new Error("المادة غير موجودة");
+
+        const balanceBefore = item.currentQty;
+        let candidateBalance: number;
+        if (input.type === "receive" || input.type === "return") {
+          candidateBalance = balanceBefore + input.quantity;
+        } else if (input.type === "consume" || input.type === "transfer") {
+          candidateBalance = balanceBefore - input.quantity;
+        } else {
+          // adjust: quantity is a signed delta, not a replacement balance
+          candidateBalance = balanceBefore + input.quantity;
+        }
+        if (candidateBalance < 0) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "الكمية المتاحة في المخزون غير كافية",
+          });
+        }
+
+        const now = Date.now();
+        await tx.insert(schema.inventoryTransactions).values({
+          itemId:        input.itemId,
+          type:          input.type,
+          quantity:      input.quantity,
+          balanceBefore,
+          balanceAfter:  candidateBalance,
+          reference:     input.reference,
+          note:          input.note,
+          performedBy:   ctx.staff.name,
+          staffUserId:   ctx.staff.userId,
+          date:          input.date,
+          createdAt:     now,
+        });
+
+        const updateData: Record<string, unknown> = {
+          currentQty: candidateBalance,
+          updatedAt: now,
+        };
+        if (input.type === "receive") updateData.lastReceived = input.date;
+        if (input.type === "consume") updateData.lastConsumed = input.date;
+
+        await tx.update(schema.inventoryItems)
+          .set(updateData)
+          .where(eq(schema.inventoryItems.id, input.itemId));
+
+        return {
+          balanceBefore,
+          balanceAfter: candidateBalance,
+          status: calcStatus(candidateBalance, item.minQty),
+        };
       });
-
-      const updateData: Record<string, unknown> = {
-        currentQty: newQty,
-        updatedAt: now,
-      };
-      if (input.type === "receive") updateData.lastReceived = input.date;
-      if (input.type === "consume") updateData.lastConsumed = input.date;
-
-      await db.update(schema.inventoryItems)
-        .set(updateData)
-        .where(eq(schema.inventoryItems.id, input.itemId));
-
-      return {
-        balanceBefore,
-        balanceAfter: newQty,
-        status: calcStatus(newQty, item.minQty),
-      };
     }),
 
   // خصم تلقائي عند إنشاء أمر تشغيل
