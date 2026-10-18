@@ -131,6 +131,8 @@ describe("orders.create temporary admin gate", () => {
       productName: orderInput.productName,
       status: "new",
       canonicalNumber: "SD-2026-000042",
+      commercialStatus: "draft",
+      materialState: "not_started",
     });
   });
 });

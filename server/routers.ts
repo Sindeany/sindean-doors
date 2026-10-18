@@ -2,7 +2,17 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 import { db, schema } from "./db.js";
 import { eq, desc, like, or, ne, and, gt } from "drizzle-orm";
-import { router, publicProcedure, adminProcedure } from "./trpc.js";
+import {
+  router,
+  publicProcedure,
+  adminProcedure,
+  requireAnyStaffRole,
+} from "./trpc.js";
+import {
+  applyCommercialCommand,
+  CommercialOrderError,
+  type CommercialCommand,
+} from "./commercial-order-lifecycle.js";
 import { suppliersRouter } from "./suppliers.router.js";
 import { rfqRouter } from "./rfq.router.js";
 import { commentsRouter } from "./comments.router.js";
@@ -90,9 +100,35 @@ function getStatusForStage(stage: string): "confirmed" | "manufacturing" | "ship
   }
 }
 
+const commercialCommandInput = z.object({
+  orderId: z.number().int().positive(),
+});
+
+function commercialCommandProcedure(
+  roles: readonly ["sales_person" | "sales_coordinator" | "admin", ...("sales_person" | "sales_coordinator" | "admin")[]],
+  command: CommercialCommand
+) {
+  return requireAnyStaffRole(roles)
+    .input(commercialCommandInput)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return await db.transaction((tx) =>
+          applyCommercialCommand(tx, command, input.orderId, ctx.staff.userId)
+        );
+      } catch (error) {
+        if (error instanceof CommercialOrderError) {
+          throw new TRPCError({ code: error.code, message: error.message });
+        }
+        throw error;
+      }
+    });
+}
+
 const ordersRouter = router({
-  // Temporary lockdown: admin session only. Customer sessions cannot create orders.
-  // Phases 2 and 3 replace this with Sales Coordinator / Sales Person authorization.
+  // The active caller is the customer door wizard. It presents a customer user,
+  // while this procedure still requires the legacy admin cookie. It does not
+  // present a staff session, so this phase does not switch the gate to
+  // sales_person / sales_coordinator. Business transitions below use staff roles.
   create: adminProcedure
     .input(
       z.object({
@@ -151,6 +187,8 @@ const ordersRouter = router({
             notes: input.notes || null,
             status: "new",
             canonicalNumber,
+            commercialStatus: "draft",
+            materialState: "not_started",
             createdAt: now,
             updatedAt: now,
           });
@@ -206,6 +244,18 @@ const ordersRouter = router({
         success: true,
       };
     }),
+
+  submitForCoordinatorReview: commercialCommandProcedure(
+    ["sales_person", "sales_coordinator"],
+    "submit_for_coordinator_review"
+  ),
+  submitForAdminReview: commercialCommandProcedure(
+    ["sales_coordinator"],
+    "submit_for_admin_review"
+  ),
+  approve: commercialCommandProcedure(["admin"], "approve"),
+  reject: commercialCommandProcedure(["admin"], "reject"),
+  cancel: commercialCommandProcedure(["admin"], "cancel"),
 
   // Get all orders (admin only)
   list: adminProcedure

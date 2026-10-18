@@ -225,6 +225,10 @@ describe("orders.create canonical number", () => {
     expect(result.canonicalNumber).not.toBe("SD-1999-000001");
     expect(state.doorInserts).toHaveLength(1);
     expect(state.doorInserts[0]?.canonicalNumber).toBe(result.canonicalNumber);
+    expect(state.doorInserts[0]).toMatchObject({
+      commercialStatus: "draft",
+      materialState: "not_started",
+    });
     expect(JSON.stringify(state.doorInserts[0])).not.toContain("SD-1999-");
   });
 
