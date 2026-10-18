@@ -103,37 +103,25 @@ async function expectUnauthorized(
   });
 }
 
-describe("orders.create temporary admin gate", () => {
+describe("orders.create staff sales gate", () => {
+  const staffLoginMessage = "يرجى تسجيل الدخول";
+
   it("rejects an anonymous caller", async () => {
     const before = insertedRows.length;
-    await expectUnauthorized(anonymous.orders.create(orderInput), ADMIN_MESSAGE);
+    await expectUnauthorized(anonymous.orders.create(orderInput), staffLoginMessage);
     expect(insertedRows.length).toBe(before);
   });
 
   it("rejects an authenticated customer session", async () => {
     const before = insertedRows.length;
-    await expectUnauthorized(customer.orders.create(orderInput), ADMIN_MESSAGE);
+    await expectUnauthorized(customer.orders.create(orderInput), staffLoginMessage);
     expect(insertedRows.length).toBe(before);
   });
 
-  it("allows an authenticated admin session on the temporary path", async () => {
+  it("rejects a legacy admin session with no staff identity", async () => {
     const before = insertedRows.length;
-    const result = await admin.orders.create(orderInput);
-    expect(result).toEqual({
-      id: 99,
-      canonicalNumber: "SD-2026-000042",
-      success: true,
-    });
-    expect(insertedRows.length).toBe(before + 1);
-    expect(insertedRows.at(-1)).toMatchObject({
-      customerName: orderInput.customerName,
-      customerPhone: orderInput.customerPhone,
-      productName: orderInput.productName,
-      status: "new",
-      canonicalNumber: "SD-2026-000042",
-      commercialStatus: "draft",
-      materialState: "not_started",
-    });
+    await expectUnauthorized(admin.orders.create(orderInput), staffLoginMessage);
+    expect(insertedRows.length).toBe(before);
   });
 });
 

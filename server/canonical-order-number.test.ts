@@ -16,8 +16,23 @@ import { factoryCalendarYear } from "./factory-time.js";
 
 const state = vi.hoisted(() => ({
   doorInserts: [] as Array<Record<string, unknown>>,
+  auditInserts: [] as Array<Record<string, unknown>>,
   orderUpdates: [] as unknown[],
   counters: new Map<number, { lastValue: number; updatedAt: number }>(),
+}));
+
+const { validateStaffSession } = vi.hoisted(() => ({
+  validateStaffSession: vi.fn(async (token: string | undefined) => {
+    if (!token) return null;
+    return {
+      userId: 41,
+      sessionId: 410,
+      name: "Sales Person",
+      loginName: "sales.person",
+      roles: ["sales_person"],
+      expiresAt: Date.now() + 60_000,
+    };
+  }),
 }));
 
 function counterExecutor() {
@@ -46,6 +61,14 @@ function counterExecutor() {
           async values(row: Record<string, unknown>) {
             state.doorInserts.push(row);
             return [{ insertId: 100 + state.doorInserts.length }];
+          },
+        };
+      }
+      if (table === schema.auditEvents) {
+        return {
+          async values(row: Record<string, unknown>) {
+            state.auditInserts.push(row);
+            return [{ insertId: 500 + state.auditInserts.length }];
           },
         };
       }
@@ -126,6 +149,13 @@ function counterExecutor() {
   };
 }
 
+vi.mock("./staff-sessions.js", async () => {
+  const actual = await vi.importActual<typeof import("./staff-sessions.js")>(
+    "./staff-sessions.js"
+  );
+  return { ...actual, validateStaffSession };
+});
+
 vi.mock("./db.js", async () => {
   const realSchema = await import("../drizzle/schema.js");
   const session = {
@@ -165,6 +195,7 @@ vi.mock("./db.js", async () => {
 import { appRouter } from "./routers.js";
 
 const admin = appRouter.createCaller({ adminToken: "valid-admin-token" });
+const sales = appRouter.createCaller({ staffToken: "sales-session" });
 
 const orderInput = {
   customerName: "عميل تجريبي",
@@ -177,6 +208,7 @@ const orderInput = {
 
 beforeEach(() => {
   state.doorInserts.length = 0;
+  state.auditInserts.length = 0;
   state.orderUpdates.length = 0;
   state.counters.clear();
 });
@@ -241,7 +273,7 @@ describe("allocateCanonicalOrderNumber", () => {
 
 describe("orders.create canonical number", () => {
   it("stores the server number and ignores a client-supplied number", async () => {
-    const result = await admin.orders.create({
+    const result = await sales.orders.create({
       ...orderInput,
       canonicalNumber: "SD-1999-000001",
       canonical_number: "SD-1999-000002",
@@ -259,15 +291,22 @@ describe("orders.create canonical number", () => {
       materialState: "not_started",
     });
     expect(JSON.stringify(state.doorInserts[0])).not.toContain("SD-1999-");
+    expect(state.auditInserts).toHaveLength(1);
+    expect(state.auditInserts[0]).toMatchObject({
+      eventType: "order.created",
+      actorStaffUserId: 41,
+      canonicalNumber: result.canonicalNumber,
+    });
   });
 
   it("does not insert an order when the year sequence is exhausted", async () => {
     const year = factoryCalendarYear(new Date());
     state.counters.set(year, { lastValue: 999999, updatedAt: 1 });
-    await expect(admin.orders.create(orderInput)).rejects.toMatchObject({
+    await expect(sales.orders.create(orderInput)).rejects.toMatchObject({
       code: "CONFLICT",
     });
     expect(state.doorInserts).toHaveLength(0);
+    expect(state.auditInserts).toHaveLength(0);
     expect(state.counters.get(year)?.lastValue).toBe(999999);
   });
 });

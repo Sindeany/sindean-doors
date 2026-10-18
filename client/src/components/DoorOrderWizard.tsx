@@ -38,7 +38,6 @@ import {
   type OptionValue,
 } from "@/stores/productOptionsStore";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { trpc } from "@/lib/trpc";
 import type { PriceTier } from "../lib/productsData";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1057,7 +1056,6 @@ export default function DoorOrderWizard({
   const [selections, setSelections] = useState<SelectionMap>({});
   const [subSelections, setSubSelections] = useState<SubSelectionMap>({});
   const [errors, setErrors] = useState<Set<string>>(new Set());
-  const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [orderId, setOrderId] = useState<number | null>(null);
   const [customerName, setCustomerName] = useState("");
@@ -1104,8 +1102,6 @@ export default function DoorOrderWizard({
     }
   };
   const contentRef = useRef<HTMLDivElement>(null);
-
-  const createOrder = trpc.orders.create.useMutation();
 
   // Reset on open
   useEffect(() => {
@@ -1198,56 +1194,8 @@ export default function DoorOrderWizard({
     if (currentStep > 0) setCurrentStep(s => s - 1);
   };
 
-  const handleSubmit = async () => {
-    if (!user) {
-      toast.error("يرجى تسجيل الدخول أولاً لإرسال الطلب");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      // Serialize all selections as strings (preserves toggles and number inputs)
-      const allSelections: Record<string, string> = {};
-      for (const [k, v] of Object.entries(selections)) {
-        if (v !== undefined && v !== null && v !== "") {
-          allSelections[k] = String(v);
-        }
-      }
-
-      // Extract dimensions: all number_input groups across all sections
-      const dims: Record<string, unknown> = {};
-      for (const sec of activeSections) {
-        for (const grp of sec.groups) {
-          if (grp.type === "number_input" && selections[grp.id] !== undefined) {
-            dims[grp.id] = selections[grp.id];
-          }
-        }
-      }
-
-      const result = await createOrder.mutateAsync({
-        customerName: user?.name ?? "",
-        customerPhone: user?.phone ?? "",
-        customerEmail: user?.email ?? undefined,
-        productId: productId || "unknown",
-        productName: productName || "باب سنديان",
-        totalDoors: qty,
-        selections: allSelections,
-        subSelections: subSelections as Record<string, unknown>,
-        dimensions: Object.keys(dims).length > 0 ? dims : undefined,
-        basePrice: (currentTier?.price ?? basePrice),
-        totalPrice,
-        notes: String(selections["special_request_text"] ?? ""),
-      });
-      setSubmitting(false);
-      setOrderId(result.id ?? null);
-      setSubmitted(true);
-      setTimeout(() => {
-        toast.success("تم إرسال طلبك بنجاح! سيتواصل معك فريقنا قريباً.");
-      }, 100);
-    } catch (err) {
-      setSubmitting(false);
-      console.error("[DoorOrderWizard] Submit error:", err);
-      toast.error("حدث خطأ أثناء إرسال الطلب. يرجى المحاولة مرة أخرى.");
-    }
+  const handleSubmit = () => {
+    toast.error("هذه الصفحة لا تنشئ طلب مصنع. إرسال طلب العميل غير متاح حالياً.");
   };
 
   return createPortal(
@@ -1385,10 +1333,10 @@ export default function DoorOrderWizard({
               {user ? null : (
                 <div className="mt-4 bg-white border border-oak/20 rounded-xl p-5">
                   <h4 className="font-bold text-gray-800 text-sm mb-1 text-center">
-                    {authMode === "login" ? "سجّل الدخول لإتمام الطلب" : "أنشئ حساباً لإتمام الطلب"}
+                    {authMode === "login" ? "تسجيل الدخول لا ينشئ طلب مصنع" : "إنشاء حساب لا ينشئ طلب مصنع"}
                   </h4>
                   <p className="text-xs text-gray-500 mb-4 text-center">
-                    لن تفقد خياراتك — سيُكمَل طلبك بعد الدخول مباشرة.
+                    طلب المصنع ينشئه موظف المبيعات. هذه الصفحة لا ترسله.
                   </p>
 
                   {authMode === "register" && (
@@ -1483,18 +1431,12 @@ export default function DoorOrderWizard({
                   )}
                   {isSummary ? (
                     <button
+                      type="button"
                       onClick={handleSubmit}
-                      disabled={!user || submitting}
-                      className="flex-1 py-3 bg-oak text-white rounded-xl font-bold hover:bg-oak/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
+                      className="flex-1 py-3 bg-oak text-white rounded-xl font-bold hover:bg-oak/90 transition-colors flex items-center justify-center gap-2"
                     >
-                      {submitting ? (
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      ) : (
-                        <>
-                          <ShoppingCart className="w-4 h-4" />
-                          إرسال الطلب
-                        </>
-                      )}
+                      <ShoppingCart className="w-4 h-4" />
+                      إرسال غير متاح
                     </button>
                   ) : (
                     <button

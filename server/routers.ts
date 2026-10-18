@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 import { db, schema } from "./db.js";
-import { eq, desc, like, or, ne, and, gt } from "drizzle-orm";
+import { eq, desc, like, ne } from "drizzle-orm";
 import {
   router,
   publicProcedure,
@@ -47,10 +47,8 @@ import { analyticsRouter } from "./analytics.router.js";
 import { customerPortalRouter } from "./customer-portal.router.js";
 import { sendOrderConfirmation } from "./email.js";
 import { bomRouter } from "./bom.router.js";
-import {
-  allocateCanonicalOrderNumber,
-  CanonicalSequenceExhaustedError,
-} from "./canonical-order-number.js";
+import { CanonicalSequenceExhaustedError } from "./canonical-order-number.js";
+import { insertCanonicalFactoryOrder } from "./factory-order-create.js";
 
 // ── Owner Notification Helper ────────────────────────────────────────────────
 async function notifyOwner(title: string, content: string): Promise<void> {
@@ -127,11 +125,9 @@ function commercialCommandProcedure(
 }
 
 const ordersRouter = router({
-  // The active caller is the customer door wizard. It presents a customer user,
-  // while this procedure still requires the legacy admin cookie. It does not
-  // present a staff session, so this phase does not switch the gate to
-  // sales_person / sales_coordinator. Business transitions below use staff roles.
-  create: adminProcedure
+  // Canonical factory orders are created by an individual sales staff session.
+  // The public door wizard does not call this procedure.
+  create: requireAnyStaffRole(["sales_person", "sales_coordinator"])
     .input(
       z.object({
         customerName: z.string().min(1),
@@ -149,59 +145,30 @@ const ordersRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      // فرض بريد الحساب المسجّل تلقائياً إن وُجدت جلسة صالحة (وإلا يبقى بريد الضيف)
-      let resolvedEmail = input.customerEmail || null;
-      if (ctx.userToken) {
-        const now = Date.now();
-        const session = await db.query.userSessions.findFirst({
-          where: and(
-            eq(schema.userSessions.token, ctx.userToken),
-            gt(schema.userSessions.expiresAt, now)
-          ),
-        });
-        if (session) {
-          const u = await db.query.users.findFirst({
-            where: eq(schema.users.id, session.userId),
-          });
-          if (u?.email) resolvedEmail = u.email;
-        }
-      }
       const now = Date.now();
       let created: { id: number; canonicalNumber: string };
       try {
-        created = await db.transaction(async (tx) => {
-          const canonicalNumber = await allocateCanonicalOrderNumber(
+        created = await db.transaction((tx) =>
+          insertCanonicalFactoryOrder(
             tx,
-            new Date(now)
-          );
-          const [result] = await tx.insert(schema.doorOrders).values({
-            customerName: input.customerName,
-            customerPhone: input.customerPhone,
-            customerEmail: resolvedEmail,
-            productId: input.productId,
-            productName: input.productName,
-            totalDoors: input.totalDoors ?? 1,
-            selections: input.selections,
-            subSelections: input.subSelections,
-            dimensions: input.dimensions || null,
-            basePrice: input.basePrice,
-            totalPrice: input.totalPrice,
-            notes: input.notes || null,
-            status: "new",
-            canonicalNumber,
-            commercialStatus: "draft",
-            materialState: "not_started",
-            createdAt: now,
-            updatedAt: now,
-          });
-          const orderId = Number(
-            (result as { insertId?: number } | undefined)?.insertId
-          );
-          if (!Number.isInteger(orderId) || orderId <= 0) {
-            throw new Error("door order id was not created");
-          }
-          return { id: orderId, canonicalNumber };
-        });
+            {
+              customerName: input.customerName,
+              customerPhone: input.customerPhone,
+              customerEmail: input.customerEmail || null,
+              productId: input.productId,
+              productName: input.productName,
+              totalDoors: input.totalDoors ?? 1,
+              selections: input.selections,
+              subSelections: input.subSelections,
+              dimensions: input.dimensions ?? null,
+              basePrice: input.basePrice,
+              totalPrice: input.totalPrice,
+              notes: input.notes || null,
+            },
+            ctx.staff.userId,
+            now
+          )
+        );
       } catch (error) {
         if (error instanceof CanonicalSequenceExhaustedError) {
           throw new TRPCError({

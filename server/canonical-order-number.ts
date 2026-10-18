@@ -6,11 +6,12 @@ import { FACTORY_TIME_ZONE, factoryCalendarYear } from "./factory-time.js";
 export const CANONICAL_ORDER_SEQUENCE_MAX = 999_999;
 
 /**
- * Create-transaction lock order. Do not add other tables here.
+ * Create-transaction lock order.
  *
  * 1. `order_number_counters` row for the factory year
  *    (idempotent INSERT ... ON DUPLICATE KEY UPDATE, then SELECT ... FOR UPDATE)
  * 2. `door_orders` INSERT of the new row, including its canonical number
+ * 3. `audit_events` INSERT of `order.created`
  *
  * Approval, BOM snapshot, reservation, and Material Release run later on an
  * existing order. Those flows must lock that `door_orders` row first and must
@@ -20,6 +21,7 @@ export const CANONICAL_ORDER_SEQUENCE_MAX = 999_999;
 export const FACTORY_ORDER_CREATE_LOCK_ORDER = [
   "order_number_counters.year",
   "door_orders.insert",
+  "audit_events.insert",
 ] as const;
 
 export class CanonicalSequenceExhaustedError extends Error {
