@@ -54,6 +54,27 @@ function counterExecutor() {
     select() {
       return {
         from(table: unknown) {
+          if (table === schema.doorOrders) {
+            return {
+              where() {
+                return {
+                  for(mode: string) {
+                    if (mode !== "update") throw new Error(`expected FOR UPDATE, got ${mode}`);
+                    return {
+                      async limit() {
+                        return [
+                          {
+                            id: 7,
+                            commercialStatus: null,
+                          },
+                        ];
+                      },
+                    };
+                  },
+                };
+              },
+            };
+          }
           if (table !== schema.orderNumberCounters) {
             throw new Error("unexpected select target");
           }
@@ -77,13 +98,21 @@ function counterExecutor() {
       };
     },
     update(table: unknown) {
+      if (table === schema.doorOrders) {
+        return {
+          set(values: Record<string, unknown>) {
+            return {
+              async where() {
+                state.orderUpdates.push(values);
+              },
+            };
+          },
+        };
+      }
       return {
         set(values: { lastValue: number; updatedAt: number }) {
           return {
             async where() {
-              if (table !== schema.orderNumberCounters) {
-                throw new Error("unexpected counter update target");
-              }
               if (lockedYear === null) throw new Error("counter update without lock");
               const row = state.counters.get(lockedYear);
               if (!row) throw new Error("missing counter row");

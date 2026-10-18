@@ -4,6 +4,7 @@
  * المرحلة الثانية (Phase 2) - الربط والتكامل
  */
 
+import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 import { db } from "./db.js";
 import * as schema from "../drizzle/schema.js";
@@ -507,11 +508,26 @@ export const zatcaRouter = router({
     }),
 
   // ── إنشاء فاتورة تلقائياً من طلب باب ────────────────────────────────────
+  // Legacy compatibility only. Official invoicing is outside the first
+  // commercial lifecycle, so every lifecycle-managed door order is refused.
   createFromOrder: adminProcedure
     .input(z.object({ orderId: z.number() }))
     .mutation(async ({ input }) => {
-      const result = await createInvoiceFromOrder(input.orderId);
-      return result;
+      await db.transaction(async (tx) => {
+        const [order] = await tx
+          .select({ commercialStatus: schema.doorOrders.commercialStatus })
+          .from(schema.doorOrders)
+          .where(eq(schema.doorOrders.id, input.orderId))
+          .for("update")
+          .limit(1);
+        if (order?.commercialStatus != null) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "لا يمكن إصدار فاتورة لطلب داخل دورة الاعتماد التجارية",
+          });
+        }
+      });
+      return createInvoiceFromOrder(input.orderId);
     }),
 
   // ── حالة إرسال ZATCA لفاتورة ─────────────────────────────────────────────

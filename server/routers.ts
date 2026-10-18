@@ -10,7 +10,9 @@ import {
 } from "./trpc.js";
 import {
   applyCommercialCommand,
+  applyLegacyDoorStatus,
   CommercialOrderError,
+  deleteDoorOrderIfEligible,
   type CommercialCommand,
 } from "./commercial-order-lifecycle.js";
 import { suppliersRouter } from "./suppliers.router.js";
@@ -413,19 +415,22 @@ const ordersRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      await db
-        .update(schema.doorOrders)
-        .set({ status: input.status, updatedAt: Date.now() })
-        .where(eq(schema.doorOrders.id, input.id));
-
-      // ── إنشاء فاتورة ZATCA تلقائياً عند تأكيد الطلب ─────────────────────────
-      if (input.status === "confirmed") {
-        // fire-and-forget: فشل إنشاء الفاتورة لا يوقف تحديث حالة الطلب
+      let result;
+      try {
+        result = await db.transaction((tx) =>
+          applyLegacyDoorStatus(tx, input.id, input.status)
+        );
+      } catch (error) {
+        if (error instanceof CommercialOrderError) {
+          throw new TRPCError({ code: error.code, message: error.message });
+        }
+        throw error;
+      }
+      if (result.invoiceAllowed) {
         createInvoiceFromOrder(input.id).catch(() => {
           /* الخطأ يُحفظ في سجل الفاتورة */
         });
       }
-
       return { success: true };
     }),
 
@@ -433,9 +438,14 @@ const ordersRouter = router({
   delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
-      await db
-        .delete(schema.doorOrders)
-        .where(eq(schema.doorOrders.id, input.id));
+      try {
+        await db.transaction((tx) => deleteDoorOrderIfEligible(tx, input.id));
+      } catch (error) {
+        if (error instanceof CommercialOrderError) {
+          throw new TRPCError({ code: error.code, message: error.message });
+        }
+        throw error;
+      }
       return { success: true };
     }),
 
@@ -519,7 +529,9 @@ const ordersRouter = router({
     };
   }),
 
-  // Update workflow stage (admin only)
+  // Update workflow stage (admin only).
+  // Migration debt: this still writes legacy workflow fields only.
+  // It does not change commercial_status, material_state, or canonical_number.
   updateWorkflowStage: adminProcedure
     .input(
       z.object({
@@ -610,7 +622,9 @@ const ordersRouter = router({
       return { success: true };
     }),
 
-  // Update payment status (admin only)
+  // Update payment status (admin only).
+  // Migration debt: this still writes the legacy payment label only.
+  // It does not gate or perform commercial approval.
   updatePaymentStatus: adminProcedure
     .input(
       z.object({

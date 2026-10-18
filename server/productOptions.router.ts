@@ -7,7 +7,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 import { db, schema } from "./db.js";
-import { eq, desc, like } from "drizzle-orm";
+import { and, eq, desc, like, isNull } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import { invokeLLM } from "./llm.js";
 import { publicProcedure, adminProcedure, distributorProcedure, router } from "./trpc.js";
@@ -463,7 +463,12 @@ const distributorOrdersRouter = router({
         await db
           .update(schema.doorOrders)
           .set({ status: "cancelled", updatedAt: Date.now() })
-          .where(like(schema.doorOrders.notes, `DIST_ORDER_ID:${order.id}%`));
+          .where(
+            and(
+              like(schema.doorOrders.notes, `DIST_ORDER_ID:${order.id}%`),
+              isNull(schema.doorOrders.commercialStatus)
+            )
+          );
       }
 
       return { success: true };

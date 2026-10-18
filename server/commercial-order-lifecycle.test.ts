@@ -12,6 +12,7 @@ type OrderRow = {
   canonicalNumber: string | null;
   commercialStatus: string | null;
   materialState: string;
+  status: string;
 };
 
 const state = vi.hoisted(() => ({
@@ -19,25 +20,28 @@ const state = vi.hoisted(() => ({
   audits: [] as Array<Record<string, unknown>>,
   failAudit: false,
   touched: [] as string[],
+  invoiceOrderIds: [] as number[],
+  childOrderIds: [] as number[],
+  childCanonicalNumbers: [] as string[],
 }));
 
 const { validateStaffSession } = vi.hoisted(() => ({
   validateStaffSession: vi.fn(),
 }));
 
-function parameterNumber(clause: unknown): number | null {
-  const chunks = (clause as { queryChunks?: unknown[] } | undefined)?.queryChunks ?? [];
-  for (const chunk of chunks) {
-    if (
-      chunk &&
-      typeof chunk === "object" &&
-      "value" in chunk &&
-      typeof (chunk as { value: unknown }).value === "number"
-    ) {
-      return (chunk as { value: number }).value;
+function clauseValues(clause: unknown): unknown[] {
+  const values: unknown[] = [];
+  const visit = (node: unknown) => {
+    if (!node || typeof node !== "object") return;
+    if ("value" in node && "encoder" in node) {
+      values.push((node as { value: unknown }).value);
+      return;
     }
-  }
-  return null;
+    const chunks = (node as { queryChunks?: unknown[] }).queryChunks;
+    if (Array.isArray(chunks)) chunks.forEach(visit);
+  };
+  visit(clause);
+  return values;
 }
 
 function orderTx() {
@@ -45,32 +49,55 @@ function orderTx() {
     select() {
       return {
         from(table: unknown) {
-          state.touched.push(`select:${table === schema.doorOrders ? "door_orders" : "other"}`);
-          if (table !== schema.doorOrders) {
-            throw new Error("lifecycle selected an unexpected table");
-          }
+          const tableName =
+            table === schema.doorOrders
+              ? "door_orders"
+              : table === schema.auditEvents
+                ? "audit_events"
+                : "other";
+          state.touched.push(`select:${tableName}`);
           return {
             where(clause: unknown) {
+              const values = clauseValues(clause);
+              const read = async () => {
+                if (table === schema.doorOrders) {
+                  const id = values.find((value) => typeof value === "number");
+                  const row = typeof id === "number" ? state.orders.get(id) : undefined;
+                  return row
+                    ? [
+                        {
+                          id: row.id,
+                          canonicalNumber: row.canonicalNumber,
+                          commercialStatus: row.commercialStatus,
+                          materialState: row.materialState,
+                        },
+                      ]
+                    : [];
+                }
+                if (table === schema.auditEvents) {
+                  const entityId = values.find((value) => typeof value === "number");
+                  const eventType = values.find(
+                    (value) => typeof value === "string" && value.startsWith("order.commercial.")
+                  );
+                  const matched = state.audits.filter((row) => {
+                    if (row.entityType !== "door_order" || row.entityId !== entityId) return false;
+                    return eventType == null || row.eventType === eventType;
+                  });
+                  return matched.slice(0, 1).map((row) => ({ id: 1, ...row }));
+                }
+                const numericId = values.find((value) => typeof value === "number");
+                const canonical = values.find((value) => typeof value === "string" && value.startsWith("SD-"));
+                const blocked =
+                  (typeof numericId === "number" && state.childOrderIds.includes(numericId)) ||
+                  (typeof canonical === "string" && state.childCanonicalNumbers.includes(canonical));
+                return blocked ? [{ id: 1 }] : [];
+              };
               return {
                 for(mode: string) {
                   if (mode !== "update") throw new Error(`expected FOR UPDATE, got ${mode}`);
-                  return {
-                    async limit() {
-                      const id = parameterNumber(clause);
-                      const row = id == null ? undefined : state.orders.get(id);
-                      return row
-                        ? [
-                            {
-                              id: row.id,
-                              canonicalNumber: row.canonicalNumber,
-                              commercialStatus: row.commercialStatus,
-                              materialState: row.materialState,
-                            },
-                          ]
-                        : [];
-                    },
-                  };
+                  return { limit: read };
                 },
+                limit: read,
               };
             },
           };
@@ -85,8 +112,8 @@ function orderTx() {
               if (table !== schema.doorOrders) {
                 throw new Error("lifecycle updated an unexpected table");
               }
-              const id = parameterNumber(clause);
-              const row = id == null ? undefined : state.orders.get(id);
+              const id = clauseValues(clause).find((value) => typeof value === "number");
+              const row = typeof id === "number" ? state.orders.get(id) : undefined;
               if (!row) throw new Error("missing locked order");
               if ("canonicalNumber" in values || "canonical_number" in values) {
                 throw new Error("canonical number was included in the update");
@@ -97,6 +124,7 @@ function orderTx() {
               if (values.materialState !== undefined) {
                 row.materialState = String(values.materialState);
               }
+              if (values.status !== undefined) row.status = String(values.status);
             },
           };
         },
@@ -111,6 +139,15 @@ function orderTx() {
             return [{ insertId: state.audits.length }];
           }
           throw new Error("lifecycle inserted an unexpected table");
+        },
+      };
+    },
+    delete(table: unknown) {
+      return {
+        async where(clause: unknown) {
+          if (table !== schema.doorOrders) throw new Error("unexpected delete");
+          const id = clauseValues(clause).find((value) => typeof value === "number");
+          if (typeof id === "number") state.orders.delete(id);
         },
       };
     },
@@ -130,6 +167,20 @@ vi.mock("./db.js", async () => {
     schema: realSchema,
     pool: {},
     db: {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => [
+              {
+                id: 1,
+                token: "legacy-admin",
+                expiresAt: Date.now() + 60_000,
+                createdAt: Date.now(),
+              },
+            ],
+          }),
+        }),
+      }),
       transaction: async (fn: (tx: ReturnType<typeof orderTx>) => Promise<unknown>) => {
         const orders = new Map(
           [...state.orders].map(([id, row]) => [id, { ...row }])
@@ -159,6 +210,13 @@ vi.mock("./canonical-order-number.js", async () => {
   };
 });
 
+vi.mock("./zatca.service.js", () => ({
+  createInvoiceFromOrder: vi.fn(async (orderId: number) => {
+    state.invoiceOrderIds.push(orderId);
+    return { invoiceId: 1, invoiceNumber: "TEST", skipped: true };
+  }),
+}));
+
 import { appRouter } from "./routers.js";
 
 function staff(roles: StaffRole[], userId = 55): StaffIdentity {
@@ -179,6 +237,7 @@ function seed(partial: Partial<OrderRow> = {}) {
     canonicalNumber: partial.canonicalNumber ?? "SD-2026-000007",
     commercialStatus: partial.commercialStatus === undefined ? "draft" : partial.commercialStatus,
     materialState: partial.materialState ?? "not_started",
+    status: partial.status ?? "new",
   });
 }
 
@@ -202,6 +261,9 @@ beforeEach(() => {
   state.audits = [];
   state.failAudit = false;
   state.touched = [];
+  state.invoiceOrderIds = [];
+  state.childOrderIds = [];
+  state.childCanonicalNumbers = [];
   validateStaffSession.mockReset();
   sessions.clear();
 });
@@ -385,5 +447,123 @@ describe("commercial state machine", () => {
       canonicalNumber: "SD-2026-000007",
     });
     expect(state.audits).toHaveLength(0);
+  });
+});
+
+function legacyAdmin() {
+  return appRouter.createCaller({ adminToken: "legacy-admin" });
+}
+
+describe("approval material invariant and audit idempotency", () => {
+  it("approves only from not_started and keeps later material state on retry", async () => {
+    const admin = caller(staff(["admin"], 55));
+    seed({ commercialStatus: "admin_review", materialState: "not_started" });
+    await expect(admin.orders.approve({ orderId: 7 })).resolves.toMatchObject({
+      applied: true,
+      materialState: "pending_materials",
+    });
+    state.orders.get(7)!.materialState = "fully_reserved";
+    await expect(admin.orders.approve({ orderId: 7, actorUserId: 999 } as never)).resolves.toMatchObject({
+      applied: false,
+      commercialStatus: "approved",
+      materialState: "fully_reserved",
+    });
+    expect(state.audits).toHaveLength(1);
+    expect(state.audits[0]?.actorStaffUserId).toBe(55);
+  });
+
+  it("rejects approval when admin review has unexpected material state", async () => {
+    const admin = caller(staff(["admin"]));
+    for (const materialState of [
+      "pending_materials",
+      "partially_reserved",
+      "fully_reserved",
+      "released",
+    ]) {
+      seed({ commercialStatus: "admin_review", materialState });
+      state.audits = [];
+      await expect(admin.orders.approve({ orderId: 7 })).rejects.toMatchObject({
+        code: "CONFLICT",
+      });
+      expect(state.orders.get(7)?.commercialStatus).toBe("admin_review");
+      expect(state.orders.get(7)?.materialState).toBe(materialState);
+      expect(state.audits).toHaveLength(0);
+    }
+  });
+
+  it("fails closed when the target status has no matching audit", async () => {
+    seed({ commercialStatus: "approved", materialState: "pending_materials" });
+    await expect(caller(staff(["admin"], 80)).orders.approve({ orderId: 7 })).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+    expect(state.audits).toHaveLength(0);
+    expect(state.orders.get(7)?.materialState).toBe("pending_materials");
+    state.audits.push({
+      eventType: "order.commercial.approved",
+      entityType: "door_order",
+      entityId: 7,
+      actorStaffUserId: 12,
+    });
+    await expect(caller(staff(["admin"], 80)).orders.approve({ orderId: 7 })).resolves.toMatchObject({
+      applied: false,
+    });
+    expect(state.audits).toHaveLength(1);
+  });
+});
+
+describe("legacy status and hard delete", () => {
+  it("blocks confirmed and cancelled on a lifecycle order and does not create an invoice", async () => {
+    seed({ commercialStatus: "draft" });
+    const admin = legacyAdmin();
+    await expect(admin.orders.updateStatus({ id: 7, status: "confirmed" })).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+    await expect(admin.orders.updateStatus({ id: 7, status: "cancelled" })).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+    expect(state.orders.get(7)?.status).toBe("new");
+    expect(state.invoiceOrderIds).toHaveLength(0);
+    await expect(admin.orders.updateStatus({ id: 7, status: "reviewing" })).resolves.toEqual({
+      success: true,
+    });
+    expect(state.orders.get(7)?.status).toBe("reviewing");
+    expect(state.orders.get(7)?.commercialStatus).toBe("draft");
+  });
+
+  it("still confirms a historical row and allows the old invoice path", async () => {
+    seed({ commercialStatus: null });
+    await expect(
+      legacyAdmin().orders.updateStatus({ id: 7, status: "confirmed" })
+    ).resolves.toEqual({ success: true });
+    expect(state.orders.get(7)?.status).toBe("confirmed");
+    expect(state.invoiceOrderIds).toEqual([7]);
+  });
+
+  it("hard-deletes only an untouched lifecycle draft", async () => {
+    const admin = legacyAdmin();
+    seed();
+    await expect(admin.orders.delete({ id: 7 })).resolves.toEqual({ success: true });
+    expect(state.orders.has(7)).toBe(false);
+
+    for (const commercialStatus of [
+      "coordinator_review",
+      "admin_review",
+      "approved",
+      "rejected",
+      "cancelled",
+    ]) {
+      seed({ commercialStatus });
+      await expect(admin.orders.delete({ id: 7 })).rejects.toMatchObject({ code: "CONFLICT" });
+      expect(state.orders.has(7)).toBe(true);
+    }
+
+    seed();
+    state.childOrderIds = [7];
+    await expect(admin.orders.delete({ id: 7 })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(state.orders.get(7)?.canonicalNumber).toBe("SD-2026-000007");
+
+    seed({ commercialStatus: null });
+    await expect(admin.orders.delete({ id: 7 })).resolves.toEqual({ success: true });
+    expect(state.orders.has(7)).toBe(false);
   });
 });
