@@ -55,6 +55,37 @@ export const doorOrders = mysqlTable("door_orders", {
     .notNull()
     .default("unpaid"),
   notes: text("notes"),
+  /**
+   * Future server-generated public order number. NULL on every existing row.
+   * Unique only when set; MySQL allows many NULLs.
+   */
+  canonicalNumber: varchar("canonical_number", { length: 32 }).unique(),
+  /**
+   * New commercial machine. NULL means the row is not on that machine.
+   * Legacy `status` is not mapped into this column.
+   */
+  commercialStatus: mysqlEnum("commercial_status", [
+    "draft",
+    "coordinator_review",
+    "admin_review",
+    "approved",
+    "rejected",
+    "cancelled",
+  ]),
+  /** Dormant material-flow state. Existing rows default to not_started. */
+  materialState: mysqlEnum("material_state", [
+    "not_started",
+    "pending_materials",
+    "partially_reserved",
+    "fully_reserved",
+    "released",
+  ])
+    .notNull()
+    .default("not_started"),
+  /** Future server-owned total in minor units. No backfill. */
+  acceptedTotalMinor: bigint("accepted_total_minor", { mode: "number" }),
+  /** Future approval-time priority clock. Same epoch millis as created_at. */
+  priorityAt: bigint("priority_at", { mode: "number" }),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
 });
@@ -604,6 +635,44 @@ export const staffSessions = mysqlTable(
 
 export type StaffSession = typeof staffSessions.$inferSelect;
 export type NewStaffSession = typeof staffSessions.$inferInsert;
+
+// ── Audit events (append-only shell; no writers in this phase) ──────────────
+export const auditEvents = mysqlTable(
+  "audit_events",
+  {
+    id: int("id").primaryKey().autoincrement(),
+    eventType: varchar("event_type", { length: 100 }).notNull(),
+    entityType: varchar("entity_type", { length: 64 }).notNull(),
+    entityId: int("entity_id").notNull(),
+    canonicalNumber: varchar("canonical_number", { length: 32 }),
+    /** NULL means the event was produced by the system, not a staff session. */
+    actorStaffUserId: int("actor_staff_user_id").references(() => staffUsers.id, {
+      onDelete: "restrict",
+    }),
+    occurredAt: bigint("occurred_at", { mode: "number" }).notNull(),
+    beforeJson: json("before_json"),
+    afterJson: json("after_json"),
+  },
+  (table) => ({
+    entityIdx: index("entity_type_entity_id_idx").on(table.entityType, table.entityId),
+    canonicalNumberIdx: index("canonical_number_idx").on(table.canonicalNumber),
+    actorStaffUserIdIdx: index("actor_staff_user_id_idx").on(table.actorStaffUserId),
+    occurredAtIdx: index("occurred_at_idx").on(table.occurredAt),
+  })
+);
+
+export type AuditEvent = typeof auditEvents.$inferSelect;
+export type NewAuditEvent = typeof auditEvents.$inferInsert;
+
+// ── Canonical order-number counters (unused until a later generation phase) ─
+export const orderNumberCounters = mysqlTable("order_number_counters", {
+  year: int("year").primaryKey(),
+  lastValue: int("last_value").notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+});
+
+export type OrderNumberCounter = typeof orderNumberCounters.$inferSelect;
+export type NewOrderNumberCounter = typeof orderNumberCounters.$inferInsert;
 
 // ── Inventory Items ──────────────────────────────────────────────────────────
 // مواد المخزون الخام
