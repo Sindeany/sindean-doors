@@ -35,6 +35,10 @@ import { analyticsRouter } from "./analytics.router.js";
 import { customerPortalRouter } from "./customer-portal.router.js";
 import { sendOrderConfirmation } from "./email.js";
 import { bomRouter } from "./bom.router.js";
+import {
+  allocateCanonicalOrderNumber,
+  CanonicalSequenceExhaustedError,
+} from "./canonical-order-number.js";
 
 // ── Owner Notification Helper ────────────────────────────────────────────────
 async function notifyOwner(title: string, content: string): Promise<void> {
@@ -125,26 +129,51 @@ const ordersRouter = router({
         }
       }
       const now = Date.now();
-      const [result] = await db.insert(schema.doorOrders).values({
-        customerName: input.customerName,
-        customerPhone: input.customerPhone,
-        customerEmail: resolvedEmail,
-        productId: input.productId,
-        productName: input.productName,
-        totalDoors: input.totalDoors ?? 1,
-        selections: input.selections,
-        subSelections: input.subSelections,
-        dimensions: input.dimensions || null,
-        basePrice: input.basePrice,
-        totalPrice: input.totalPrice,
-        notes: input.notes || null,
-        status: "new",
-        createdAt: now,
-        updatedAt: now,
-      });
-      const orderId = (result as any).insertId;
+      let created: { id: number; canonicalNumber: string };
+      try {
+        created = await db.transaction(async (tx) => {
+          const canonicalNumber = await allocateCanonicalOrderNumber(
+            tx,
+            new Date(now)
+          );
+          const [result] = await tx.insert(schema.doorOrders).values({
+            customerName: input.customerName,
+            customerPhone: input.customerPhone,
+            customerEmail: resolvedEmail,
+            productId: input.productId,
+            productName: input.productName,
+            totalDoors: input.totalDoors ?? 1,
+            selections: input.selections,
+            subSelections: input.subSelections,
+            dimensions: input.dimensions || null,
+            basePrice: input.basePrice,
+            totalPrice: input.totalPrice,
+            notes: input.notes || null,
+            status: "new",
+            canonicalNumber,
+            createdAt: now,
+            updatedAt: now,
+          });
+          const orderId = Number(
+            (result as { insertId?: number } | undefined)?.insertId
+          );
+          if (!Number.isInteger(orderId) || orderId <= 0) {
+            throw new Error("door order id was not created");
+          }
+          return { id: orderId, canonicalNumber };
+        });
+      } catch (error) {
+        if (error instanceof CanonicalSequenceExhaustedError) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `أرقام طلبات المصنع لسنة ${error.year} استُنفدت`,
+          });
+        }
+        throw error;
+      }
+      const orderId = created.id;
 
-      // Non-blocking post-insert side effects
+      // Non-blocking post-commit side effects
       const dimText = input.dimensions
         ? Object.entries(input.dimensions)
             .map(([k, v]) => `${k.replace(/_/g, " ")}: ${v} سم`)
@@ -171,7 +200,11 @@ const ordersRouter = router({
         });
       }
 
-      return { id: orderId, success: true };
+      return {
+        id: orderId,
+        canonicalNumber: created.canonicalNumber,
+        success: true,
+      };
     }),
 
   // Get all orders (admin only)

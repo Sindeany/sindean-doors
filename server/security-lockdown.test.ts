@@ -10,6 +10,16 @@ const { insertedRows } = vi.hoisted(() => ({
   insertedRows: [] as unknown[],
 }));
 
+vi.mock("./canonical-order-number.js", async () => {
+  const actual = await vi.importActual<typeof import("./canonical-order-number.js")>(
+    "./canonical-order-number.js"
+  );
+  return {
+    ...actual,
+    allocateCanonicalOrderNumber: vi.fn(async () => "SD-2026-000042"),
+  };
+});
+
 vi.mock("./db.js", async () => {
   const schema = await import("../drizzle/schema.js");
   const session = {
@@ -21,16 +31,20 @@ vi.mock("./db.js", async () => {
   const limit = vi.fn(async () => [session]);
   const where = vi.fn(() => ({ limit }));
   const from = vi.fn(() => ({ where }));
+  const insert = () => ({
+    values: vi.fn(async (row: unknown) => {
+      insertedRows.push(row);
+      return [{ insertId: 99 }];
+    }),
+  });
   return {
     schema,
     db: {
       select: vi.fn(() => ({ from })),
-      insert: vi.fn(() => ({
-        values: vi.fn(async (row: unknown) => {
-          insertedRows.push(row);
-          return [{ insertId: 99 }];
-        }),
-      })),
+      insert: vi.fn(insert),
+      transaction: vi.fn(async (fn: (tx: { insert: () => ReturnType<typeof insert> }) => Promise<unknown>) =>
+        fn({ insert })
+      ),
     },
   };
 });
@@ -105,13 +119,18 @@ describe("orders.create temporary admin gate", () => {
   it("allows an authenticated admin session on the temporary path", async () => {
     const before = insertedRows.length;
     const result = await admin.orders.create(orderInput);
-    expect(result).toEqual({ id: 99, success: true });
+    expect(result).toEqual({
+      id: 99,
+      canonicalNumber: "SD-2026-000042",
+      success: true,
+    });
     expect(insertedRows.length).toBe(before + 1);
     expect(insertedRows.at(-1)).toMatchObject({
       customerName: orderInput.customerName,
       customerPhone: orderInput.customerPhone,
       productName: orderInput.productName,
       status: "new",
+      canonicalNumber: "SD-2026-000042",
     });
   });
 });
