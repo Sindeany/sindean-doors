@@ -66,6 +66,7 @@ import AdminAccounting from "./pages/admin/AdminAccounting";
 import AdminPurchases from "./pages/admin/AdminPurchases";
 import AdminBIDashboard from "./pages/admin/AdminBIDashboard";
 import AdminStaffManagement from "./pages/admin/AdminStaffManagement";
+import AdminFactoryOrderEntry from "./pages/admin/AdminFactoryOrderEntry";
 import CustomerPortal from "./pages/customer/CustomerPortal";
 
 // Supplier portal
@@ -145,6 +146,7 @@ function Router() {
         <Route path={"/admin/dashboard"} component={AdminDashboard} />
         <Route path={"/admin/distributors"} component={AdminDistributors} />
         <Route path={"/admin/distributor-orders"} component={AdminDistributorOrders} />
+        <Route path={"/admin/orders/new"} component={AdminFactoryOrderEntry} />
         <Route path={"/admin/orders"} component={AdminOrders} />
         <Route path={"/admin/orders-db"} component={AdminOrders} />
         <Route path={"/admin/complaints"} component={AdminComplaints} />

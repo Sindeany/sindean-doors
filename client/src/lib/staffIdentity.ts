@@ -20,6 +20,7 @@ export function isStaffAuthProcedure(path: string | undefined): boolean {
 const STAFF_GATED_ADMIN_PROCEDURES = new Set([
   "inventory.addTransaction",
   "inventory.bulkAdjustForStocktaking",
+  "orders.create",
 ]);
 
 export function isStaffGatedAdminProcedure(path: string | undefined): boolean {

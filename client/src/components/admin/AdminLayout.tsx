@@ -41,12 +41,14 @@ import {
   BookOpen,
   Factory,
   UserCog,
+  FilePlus,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import type { Language } from "@/contexts/LanguageContext";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import StaffIdentityControl from "@/components/admin/StaffIdentityControl";
+import { canCreateFactoryOrder } from "@/lib/staffFactoryOrder";
 
 interface NavItem {
   id: string;
@@ -55,6 +57,7 @@ interface NavItem {
   labelZh: string;
   icon: React.ReactNode;
   path: string;
+  salesOrderEntry?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -81,6 +84,15 @@ const NAV_ITEMS: NavItem[] = [
     labelZh: "经销商订单",
     icon: <Package className="w-5 h-5" />,
     path: "/admin/distributor-orders",
+  },
+  {
+    id: "factory-order",
+    labelAr: "طلب مصنع جديد",
+    labelEn: "New factory order",
+    labelZh: "新建工厂订单",
+    icon: <FilePlus className="w-5 h-5" />,
+    path: "/admin/orders/new",
+    salesOrderEntry: true,
   },
   {
     id: "orders",
@@ -340,6 +352,14 @@ export default function AdminLayout({
     refetchInterval: 30000,
     enabled: isAdminLoggedIn,
   });
+  const staffMe = trpc.staffAuth.me.useQuery(undefined, {
+    retry: false,
+    refetchOnWindowFocus: false,
+    enabled: isAdminLoggedIn,
+  });
+  const showFactoryOrderNav = canCreateFactoryOrder(
+    staffMe.isSuccess ? staffMe.data.roles : undefined
+  );
 
   const isRtl = dir === "rtl";
 
@@ -357,10 +377,14 @@ export default function AdminLayout({
     navigate("/admin/login");
   };
 
-  const activeItem = NAV_ITEMS.find(n => {
-    if (n.path === "/admin") return location === "/admin";
-    return location.startsWith(n.path);
-  });
+  const navItems = NAV_ITEMS.filter(
+    (item) => !item.salesOrderEntry || showFactoryOrderNav
+  );
+  const activeItem = navItems
+    .filter((n) =>
+      n.path === "/admin" ? location === "/admin" : location.startsWith(n.path)
+    )
+    .sort((a, b) => b.path.length - a.path.length)[0];
 
   const currentLangOption =
     LANG_OPTIONS.find(l => l.code === lang) ?? LANG_OPTIONS[0];
@@ -432,7 +456,7 @@ export default function AdminLayout({
 
       {/* Nav */}
       <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-        {NAV_ITEMS.map(item => {
+        {navItems.map(item => {
           const isActive = item.id === activeItem?.id;
           return (
             <Link
