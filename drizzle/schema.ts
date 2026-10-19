@@ -1287,3 +1287,173 @@ export const bomHistory = mysqlTable("bom_history", {
 export type BOMHistoryRow = typeof bomHistory.$inferSelect;
 export type NewBOMHistory = typeof bomHistory.$inferInsert;
 
+// ── Versioned BOM rules and immutable order snapshots ────────────────────────
+// The cost-sheet tables above stay in place. These tables are the factory
+// rule versions and the frozen per-order material requirements.
+// Scope belongs to bom_lineages and is immutable. Versions do not carry scope.
+// scope_key is never null: "factory", or "product:" plus the exact product id.
+// Published rule sets and snapshot rows are immutable in the application.
+// Snapshot lines are what reservation will reference later.
+
+export const bomLineages = mysqlTable(
+  "bom_lineages",
+  {
+    id: int("id").primaryKey().autoincrement(),
+    lineageCode: varchar("lineage_code", { length: 64 }).notNull(),
+    scopeKind: mysqlEnum("scope_kind", ["factory", "product"]).notNull(),
+    /** Null only for factory scope. Product scope stores the exact product id. */
+    productId: varchar("product_id", { length: 100 }),
+    /**
+     * Non-null ownership key. Factory scope is "factory".
+     * Product scope is "product:" plus product_id. Unique, so one lineage owns a scope.
+     */
+    scopeKey: varchar("scope_key", { length: 128 }).notNull(),
+    createdByStaffUserId: int("created_by_staff_user_id")
+      .notNull()
+      .references(() => staffUsers.id, { onDelete: "restrict" }),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  },
+  (table) => ({
+    lineageCodeUnique: unique("bom_lineages_code_uq").on(table.lineageCode),
+    scopeKeyUnique: unique("bom_lineages_scope_key_uq").on(table.scopeKey),
+  })
+);
+
+export type BomLineageRow = typeof bomLineages.$inferSelect;
+export type NewBomLineage = typeof bomLineages.$inferInsert;
+
+export const bomRuleSets = mysqlTable(
+  "bom_rule_sets",
+  {
+    id: int("id").primaryKey().autoincrement(),
+    lineageId: int("lineage_id")
+      .notNull()
+      .references(() => bomLineages.id, { onDelete: "restrict" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    version: int("version").notNull(),
+    status: mysqlEnum("rule_set_status", ["draft", "published"]).notNull().default("draft"),
+    createdByStaffUserId: int("created_by_staff_user_id")
+      .notNull()
+      .references(() => staffUsers.id, { onDelete: "restrict" }),
+    publishedByStaffUserId: int("published_by_staff_user_id").references(() => staffUsers.id, {
+      onDelete: "restrict",
+    }),
+    publishedAt: bigint("published_at", { mode: "number" }),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+    updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+  },
+  (table) => ({
+    lineageVersionUnique: unique("bom_rule_sets_lineage_version_uq").on(
+      table.lineageId,
+      table.version
+    ),
+    lineageStatusIdx: index("bom_rule_sets_lineage_status_idx").on(
+      table.lineageId,
+      table.status
+    ),
+  })
+);
+
+export type BomRuleSetRow = typeof bomRuleSets.$inferSelect;
+export type NewBomRuleSet = typeof bomRuleSets.$inferInsert;
+
+export const bomRules = mysqlTable(
+  "bom_rules",
+  {
+    id: int("id").primaryKey().autoincrement(),
+    ruleSetId: int("rule_set_id")
+      .notNull()
+      .references(() => bomRuleSets.id, { onDelete: "restrict" }),
+    inventoryItemId: int("inventory_item_id")
+      .notNull()
+      .references(() => inventoryItems.id, { onDelete: "restrict" }),
+    sortOrder: int("sort_order").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    kind: mysqlEnum("rule_kind", [
+      "fixed_per_order",
+      "fixed_per_door",
+      "linear_dimension",
+      "area_dimensions",
+      "when_selection",
+    ]).notNull(),
+    /** Positive integer coefficient. Waste is applied separately. */
+    quantity: int("quantity").notNull(),
+    dimensionKey: varchar("dimension_key", { length: 64 }),
+    secondaryDimensionKey: varchar("secondary_dimension_key", { length: 64 }),
+    selectionKey: varchar("selection_key", { length: 64 }),
+    selectionValue: varchar("selection_value", { length: 255 }),
+    appliesPer: mysqlEnum("bom_rule_applies_per", ["order", "door"]),
+    wasteNumerator: int("waste_numerator").notNull().default(0),
+    wasteDenominator: int("waste_denominator").notNull().default(1),
+    /** Counting unit copied from inventory_items.unit when the rule was saved. */
+    expectedUnit: varchar("expected_unit", { length: 50 }).notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  },
+  (table) => ({
+    ruleSetSortUnique: unique("bom_rules_set_sort_uq").on(table.ruleSetId, table.sortOrder),
+    inventoryItemIdx: index("bom_rules_inventory_item_idx").on(table.inventoryItemId),
+  })
+);
+
+export type BomRuleRow = typeof bomRules.$inferSelect;
+export type NewBomRule = typeof bomRules.$inferInsert;
+
+export const bomSnapshots = mysqlTable(
+  "bom_snapshots",
+  {
+    id: int("id").primaryKey().autoincrement(),
+    doorOrderId: int("door_order_id")
+      .notNull()
+      .references(() => doorOrders.id, { onDelete: "restrict" }),
+    canonicalNumber: varchar("canonical_number", { length: 32 }).notNull(),
+    ruleSetId: int("rule_set_id")
+      .notNull()
+      .references(() => bomRuleSets.id, { onDelete: "restrict" }),
+    lineageCode: varchar("lineage_code", { length: 64 }).notNull(),
+    ruleSetVersion: int("rule_set_version").notNull(),
+    createdByStaffUserId: int("created_by_staff_user_id")
+      .notNull()
+      .references(() => staffUsers.id, { onDelete: "restrict" }),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  },
+  (table) => ({
+    doorOrderUnique: unique("bom_snapshots_door_order_uq").on(table.doorOrderId),
+    canonicalNumberIdx: index("bom_snapshots_canonical_number_idx").on(table.canonicalNumber),
+    ruleSetIdx: index("bom_snapshots_rule_set_idx").on(table.ruleSetId),
+  })
+);
+
+export type BomSnapshotRow = typeof bomSnapshots.$inferSelect;
+export type NewBomSnapshot = typeof bomSnapshots.$inferInsert;
+
+export const bomSnapshotLines = mysqlTable(
+  "bom_snapshot_lines",
+  {
+    id: int("id").primaryKey().autoincrement(),
+    snapshotId: int("snapshot_id")
+      .notNull()
+      .references(() => bomSnapshots.id, { onDelete: "restrict" }),
+    lineNumber: int("line_number").notNull(),
+    ruleId: int("rule_id")
+      .notNull()
+      .references(() => bomRules.id, { onDelete: "restrict" }),
+    inventoryItemId: int("inventory_item_id")
+      .notNull()
+      .references(() => inventoryItems.id, { onDelete: "restrict" }),
+    requiredQty: int("required_qty").notNull(),
+    /** Counting unit copied from inventory_items.unit at snapshot time. */
+    unit: varchar("unit", { length: 50 }).notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  },
+  (table) => ({
+    snapshotLineUnique: unique("bom_snapshot_lines_snapshot_line_uq").on(
+      table.snapshotId,
+      table.lineNumber
+    ),
+    inventoryItemIdx: index("bom_snapshot_lines_inventory_item_idx").on(table.inventoryItemId),
+  })
+);
+
+export type BomSnapshotLineRow = typeof bomSnapshotLines.$inferSelect;
+export type NewBomSnapshotLine = typeof bomSnapshotLines.$inferInsert;
+

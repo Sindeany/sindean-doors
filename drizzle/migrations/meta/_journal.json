@@ -36,6 +36,13 @@
       "when": 1791230959488,
       "tag": "0004_orange_argent",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1792446130142,
+      "tag": "0005_bom_rule_snapshots",
+      "breakpoints": true
     }
   ]
 }
