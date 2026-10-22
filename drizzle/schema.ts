@@ -82,8 +82,12 @@ export const doorOrders = mysqlTable("door_orders", {
   ])
     .notNull()
     .default("not_started"),
-  /** Future server-owned total in minor units. No backfill. */
-  acceptedTotalMinor: bigint("accepted_total_minor", { mode: "number" }),
+  /**
+   * Accepted commercial total in minor units (SAR halalas). Set once by a
+   * sales coordinator. Null until that command. Not derived from total_price.
+   * mode bigint keeps every stored halala exact in JavaScript.
+   */
+  acceptedTotalMinor: bigint("accepted_total_minor", { mode: "bigint" }),
   /** Future approval-time priority clock. Same epoch millis as created_at. */
   priorityAt: bigint("priority_at", { mode: "number" }),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
@@ -673,6 +677,58 @@ export const orderNumberCounters = mysqlTable("order_number_counters", {
 
 export type OrderNumberCounter = typeof orderNumberCounters.$inferSelect;
 export type NewOrderNumberCounter = typeof orderNumberCounters.$inferInsert;
+
+// ── Advance payment eligibility ──────────────────────────────────────────────
+// One global policy lineage. Each row is an immutable published version.
+// is_current is 1 for the single current version and NULL once superseded.
+// MySQL UNIQUE allows many NULLs, so the unique key admits only one current row.
+// Historical basis points are never updated. order_payments is append-only.
+
+export const advancePolicies = mysqlTable(
+  "advance_policies",
+  {
+    id: int("id").primaryKey().autoincrement(),
+    requiredAdvanceBps: int("required_advance_bps").notNull(),
+    publishedByStaffUserId: int("published_by_staff_user_id")
+      .notNull()
+      .references(() => staffUsers.id, { onDelete: "restrict" }),
+    publishedAt: bigint("published_at", { mode: "number" }).notNull(),
+    supersededAt: bigint("superseded_at", { mode: "number" }),
+    /** 1 while this version is current. NULL after it is superseded. Never 0. */
+    isCurrent: tinyint("is_current"),
+  },
+  (table) => ({
+    oneCurrentUnique: unique("advance_policies_one_current_uq").on(table.isCurrent),
+    publishedByIdx: index("advance_policies_published_by_idx").on(table.publishedByStaffUserId),
+  })
+);
+
+export type AdvancePolicy = typeof advancePolicies.$inferSelect;
+export type NewAdvancePolicy = typeof advancePolicies.$inferInsert;
+
+export const orderPayments = mysqlTable(
+  "order_payments",
+  {
+    id: int("id").primaryKey().autoincrement(),
+    doorOrderId: int("door_order_id")
+      .notNull()
+      .references(() => doorOrders.id, { onDelete: "restrict" }),
+    amountMinor: bigint("amount_minor", { mode: "bigint" }).notNull(),
+    reference: varchar("reference", { length: 128 }),
+    recordedByStaffUserId: int("recorded_by_staff_user_id")
+      .notNull()
+      .references(() => staffUsers.id, { onDelete: "restrict" }),
+    receivedAt: bigint("received_at", { mode: "number" }).notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  },
+  (table) => ({
+    doorOrderIdx: index("order_payments_door_order_idx").on(table.doorOrderId),
+    recordedByIdx: index("order_payments_recorded_by_idx").on(table.recordedByStaffUserId),
+  })
+);
+
+export type OrderPayment = typeof orderPayments.$inferSelect;
+export type NewOrderPayment = typeof orderPayments.$inferInsert;
 
 // ── Inventory Items ──────────────────────────────────────────────────────────
 // مواد المخزون الخام

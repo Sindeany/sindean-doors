@@ -8,6 +8,10 @@ const useSsl = process.env.DB_SSL === "true";
 export const pool = mysql.createPool({
   uri: process.env.DATABASE_URL!,
   charset: "utf8mb4",
+  // Safe BIGINT values stay JS numbers, so COUNT(*) arithmetic keeps working.
+  // Values above Number.MAX_SAFE_INTEGER stay decimal strings.
+  // Money columns use Drizzle mode "bigint" and map both forms with BigInt.
+  supportBigNumbers: true,
   ...(useSsl ? { ssl: { rejectUnauthorized: true } } : {}),
 });
 

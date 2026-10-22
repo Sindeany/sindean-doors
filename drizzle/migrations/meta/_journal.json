@@ -43,6 +43,13 @@
       "when": 1792446130142,
       "tag": "0005_bom_rule_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1792679059557,
+      "tag": "0006_advance_payment_eligibility",
+      "breakpoints": true
     }
   ]
 }
