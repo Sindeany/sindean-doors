@@ -17,8 +17,22 @@ const { validateStaffSession, memory } = vi.hoisted(() => ({
     transactionCalls: 0,
     outerWrites: 0,
     failOnUpdateId: null as number | null,
+    runTransaction: null as null | ((run: (tx: never) => Promise<unknown>) => Promise<unknown>),
   },
 }));
+
+vi.mock("drizzle-orm/mysql2", async () => {
+  const actual = await vi.importActual<typeof import("drizzle-orm/mysql2")>("drizzle-orm/mysql2");
+  return {
+    ...actual,
+    drizzle: () => ({
+      transaction: (run: (tx: never) => Promise<unknown>) => {
+        if (!memory.runTransaction) throw new Error("transaction runner missing");
+        return memory.runTransaction(run);
+      },
+    }),
+  };
+});
 
 function collectNumbers(node: unknown, out: number[] = []): number[] {
   if (!node || typeof node !== "object") return out;
@@ -48,10 +62,16 @@ vi.mock("./db.js", async () => {
   const tx = {
     select() {
       return {
-        from() {
+        from(table: unknown) {
+          const tableName = getTableName(table as never);
           return {
             where(condition: unknown) {
-              return {
+              const read = async () => {
+                if (tableName !== "inventory_items") return [];
+                const ids = collectNumbers(condition);
+                return memory.items.filter((item) => ids.includes(Number(item.id)));
+              };
+              const result = {
                 for(mode: string) {
                   const id = itemIdFrom(condition);
                   memory.lockOrder.push(id);
@@ -63,7 +83,14 @@ vi.mock("./db.js", async () => {
                     },
                   };
                 },
+                then(
+                  onFulfilled: (value: unknown) => unknown,
+                  onRejected?: (reason: unknown) => unknown
+                ) {
+                  return read().then(onFulfilled, onRejected);
+                },
               };
+              return result;
             },
           };
         },
@@ -99,24 +126,39 @@ vi.mock("./db.js", async () => {
     },
   };
 
+  const runTransaction = async (run: (inner: typeof tx) => Promise<unknown>) => {
+    memory.transactionCalls += 1;
+    const items = structuredClone(memory.items);
+    const txs = structuredClone(memory.txs);
+    const updates = structuredClone(memory.updates);
+    try {
+      return await run(tx);
+    } catch (error) {
+      memory.items = items;
+      memory.txs = txs;
+      memory.updates = updates;
+      throw error;
+    }
+  };
+  memory.runTransaction = runTransaction as never;
+
   return {
     schema,
-    pool: {},
-    db: {
-      async transaction(run: (inner: typeof tx) => Promise<unknown>) {
-        memory.transactionCalls += 1;
-        const items = structuredClone(memory.items);
-        const txs = structuredClone(memory.txs);
-        const updates = structuredClone(memory.updates);
-        try {
-          return await run(tx);
-        } catch (error) {
-          memory.items = items;
-          memory.txs = txs;
-          memory.updates = updates;
-          throw error;
-        }
+    pool: {
+      async getConnection() {
+        return {
+          async query(text: string) {
+            if (text.includes("GET_LOCK")) return [[{ locked: 1 }]];
+            if (text.includes("RELEASE_LOCK")) return [[{ released: 1 }]];
+            throw new Error(`unexpected connection query ${text}`);
+          },
+          release() {},
+          destroy() {},
+        };
       },
+    },
+    db: {
+      transaction: runTransaction,
       insert: rejectOuter,
       update: rejectOuter,
       delete: rejectOuter,

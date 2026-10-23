@@ -2,6 +2,11 @@
 // inventory.router.ts - مسارات إدارة المخزون
 // ============================================================
 import { TRPCError } from "@trpc/server";
+import {
+  ReservationError,
+  reconcileReservationsAfterStocktake,
+  withReservationAllocator,
+} from "./reservation.js";
 import { z } from "zod/v4";
 import { db, schema } from "./db.js";
 import { eq, desc } from "drizzle-orm";
@@ -34,6 +39,61 @@ const itemMetadataInput = z.object({
 
 export const itemCreateInput = itemMetadataInput;
 export const itemUpdateInput = itemMetadataInput;
+
+function databaseErrorParts(error: unknown): Array<{ errno: number | null; code: string; sqlState: string }> {
+  const found: Array<{ errno: number | null; code: string; sqlState: string }> = [];
+  const queue: unknown[] = [error];
+  const seen = new Set<unknown>();
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object" || seen.has(current)) continue;
+    seen.add(current);
+    const record = current as { errno?: unknown; code?: unknown; sqlState?: unknown; cause?: unknown };
+    found.push({
+      errno: typeof record.errno === "number" ? record.errno : null,
+      code: typeof record.code === "string" ? record.code : "",
+      sqlState: typeof record.sqlState === "string" ? record.sqlState : "",
+    });
+    if ("cause" in record) queue.push(record.cause);
+  }
+  return found;
+}
+
+function inventoryConstraintError(error: unknown): TRPCError | null {
+  if (error instanceof TRPCError || error instanceof ReservationError) return null;
+  for (const part of databaseErrorParts(error)) {
+    if (
+      part.errno === 1644 ||
+      part.errno === 3819 ||
+      part.sqlState === "45000" ||
+      part.code === "ER_SIGNAL_EXCEPTION" ||
+      part.code === "ER_CHECK_CONSTRAINT_VIOLATED"
+    ) {
+      return new TRPCError({
+        code: "CONFLICT",
+        message: "لا يمكن إنقاص المخزون إلى أقل من الكمية المحجوزة",
+      });
+    }
+    if (
+      part.errno === 1205 ||
+      part.errno === 1213 ||
+      part.code === "ER_LOCK_WAIT_TIMEOUT" ||
+      part.code === "ER_LOCK_DEADLOCK"
+    ) {
+      return new TRPCError({ code: "CONFLICT", message: "تعارض في تحديث المخزون" });
+    }
+  }
+  return null;
+}
+
+function rethrowInventoryWrite(error: unknown): never {
+  if (error instanceof ReservationError) {
+    throw new TRPCError({ code: error.code, message: error.message });
+  }
+  const constraint = inventoryConstraintError(error);
+  if (constraint) throw constraint;
+  throw error;
+}
 
 function calcStatus(qty: number, minQty: number): "in_stock" | "low_stock" | "critical" | "out_of_stock" {
   if (qty <= 0) return "out_of_stock";
@@ -104,10 +164,22 @@ export const inventoryRouter = router({
   delete: adminProcedure
     .input(z.object({ id: z.number().int() }))
     .mutation(async ({ input }) => {
-      await db.delete(schema.inventoryTransactions)
-        .where(eq(schema.inventoryTransactions.itemId, input.id));
-      await db.delete(schema.inventoryItems)
-        .where(eq(schema.inventoryItems.id, input.id));
+      try {
+        await db.delete(schema.inventoryTransactions)
+          .where(eq(schema.inventoryTransactions.itemId, input.id));
+        await db.delete(schema.inventoryItems)
+          .where(eq(schema.inventoryItems.id, input.id));
+      } catch (error) {
+        for (const part of databaseErrorParts(error)) {
+          if (part.errno === 1451 || part.errno === 1217 || part.code === "ER_ROW_IS_REFERENCED_2" || part.code === "ER_ROW_IS_REFERENCED") {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "لا يمكن حذف مادة مرتبطة بسجلات أخرى",
+            });
+          }
+        }
+        throw error;
+      }
       return { ok: true };
     }),
 
@@ -142,7 +214,8 @@ export const inventoryRouter = router({
         });
       }
 
-      return db.transaction(async (tx) => {
+      try {
+      return await db.transaction(async (tx) => {
         const [item] = await tx
           .select()
           .from(schema.inventoryItems)
@@ -161,10 +234,17 @@ export const inventoryRouter = router({
           // adjust: quantity is a signed delta, not a replacement balance
           candidateBalance = balanceBefore + input.quantity;
         }
+        const reservedQty = item.reservedQty ?? 0;
         if (candidateBalance < 0) {
           throw new TRPCError({
             code: "CONFLICT",
             message: "الكمية المتاحة في المخزون غير كافية",
+          });
+        }
+        if (candidateBalance < reservedQty) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "لا يمكن إنقاص المخزون إلى أقل من الكمية المحجوزة",
           });
         }
 
@@ -200,6 +280,9 @@ export const inventoryRouter = router({
           status: calcStatus(candidateBalance, item.minQty),
         };
       });
+      } catch (error) {
+        rethrowInventoryWrite(error);
+      }
     }),
 
   // خصم تلقائي عند إنشاء أمر تشغيل
@@ -213,35 +296,83 @@ export const inventoryRouter = router({
       })),
     }))
     .mutation(async ({ input }) => {
+      for (const consumption of input.consumptions) {
+        if (!Number.isInteger(consumption.quantity) || consumption.quantity <= 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "الكمية يجب أن تكون أكبر من صفر",
+          });
+        }
+      }
       const today = new Date().toISOString().split("T")[0];
       const warnings: string[] = [];
+      const sortedIds = [...new Set(input.consumptions.map((row) => row.itemId))].sort((a, b) => a - b);
 
-      for (const c of input.consumptions) {
-        const item = await db.query.inventoryItems.findFirst({
-          where: eq(schema.inventoryItems.id, c.itemId),
+      try {
+        await db.transaction(async (tx) => {
+          const locked = new Map<number, {
+            id: number;
+            name: string;
+            unit: string;
+            currentQty: number;
+            reservedQty: number;
+          }>();
+          for (const itemId of sortedIds) {
+            const [item] = await tx
+              .select()
+              .from(schema.inventoryItems)
+              .where(eq(schema.inventoryItems.id, itemId))
+              .for("update")
+              .limit(1);
+            if (!item) continue;
+            locked.set(itemId, {
+              id: item.id,
+              name: item.name,
+              unit: item.unit,
+              currentQty: item.currentQty,
+              reservedQty: item.reservedQty ?? 0,
+            });
+          }
+
+          for (const consumption of input.consumptions) {
+            const item = locked.get(consumption.itemId);
+            if (!item) {
+              warnings.push(`مادة رقم ${consumption.itemId} غير موجودة`);
+              continue;
+            }
+            const candidateCurrent = item.currentQty - consumption.quantity;
+            if (candidateCurrent < 0) {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "الكمية المتاحة في المخزون غير كافية",
+              });
+            }
+            if (candidateCurrent < item.reservedQty) {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "لا يمكن إنقاص المخزون إلى أقل من الكمية المحجوزة",
+              });
+            }
+            const now = Date.now();
+            await tx.insert(schema.inventoryTransactions).values({
+              itemId: item.id,
+              type: "consume",
+              quantity: consumption.quantity,
+              balanceBefore: item.currentQty,
+              balanceAfter: candidateCurrent,
+              reference: input.workOrderRef,
+              performedBy: input.performedBy,
+              date: today,
+              createdAt: now,
+            });
+            await tx.update(schema.inventoryItems)
+              .set({ currentQty: candidateCurrent, lastConsumed: today, updatedAt: now })
+              .where(eq(schema.inventoryItems.id, item.id));
+            item.currentQty = candidateCurrent;
+          }
         });
-        if (!item) { warnings.push(`مادة رقم ${c.itemId} غير موجودة`); continue; }
-
-        const actualConsume = Math.min(c.quantity, item.currentQty);
-        const newQty = item.currentQty - actualConsume;
-        const now = Date.now();
-
-        await db.insert(schema.inventoryTransactions).values({
-          itemId: item.id, type: "consume",
-          quantity: actualConsume,
-          balanceBefore: item.currentQty,
-          balanceAfter: newQty,
-          reference: input.workOrderRef,
-          performedBy: input.performedBy,
-          date: today, createdAt: now,
-        });
-        await db.update(schema.inventoryItems)
-          .set({ currentQty: newQty, lastConsumed: today, updatedAt: now })
-          .where(eq(schema.inventoryItems.id, item.id));
-
-        if (item.currentQty < c.quantity) {
-          warnings.push(`${item.name}: نقص ${c.quantity - item.currentQty} ${item.unit}`);
-        }
+      } catch (error) {
+        rethrowInventoryWrite(error);
       }
       return { ok: true, warnings };
     }),
@@ -272,59 +403,74 @@ export const inventoryRouter = router({
       const sortedIds = [...seen].sort((a, b) => a - b);
       const byId = new Map(input.adjustments.map((adj) => [adj.itemId, adj]));
 
-      return db.transaction(async (tx) => {
-        const locked = new Map<number, { currentQty: number }>();
-        for (const itemId of sortedIds) {
-          const [item] = await tx
-            .select()
-            .from(schema.inventoryItems)
-            .where(eq(schema.inventoryItems.id, itemId))
-            .for("update")
-            .limit(1);
-          if (!item) {
-            throw new TRPCError({
-              code: "NOT_FOUND",
-              message: "مادة غير موجودة في المخزون",
-            });
-          }
-          locked.set(itemId, item);
-        }
-
-        const now = Date.now();
-        let count = 0;
-        let unchanged = 0;
-        for (const itemId of sortedIds) {
-          const item = locked.get(itemId)!;
-          const adj = byId.get(itemId)!;
-          const balanceBefore = item.currentQty;
-          const balanceAfter = adj.actualQty;
-          const delta = balanceAfter - balanceBefore;
-          if (delta === 0) {
-            unchanged += 1;
-            continue;
+      try {
+        return await withReservationAllocator((connDb) => connDb.transaction(async (tx) => {
+          const locked = new Map<number, { currentQty: number; reservedQty: number }>();
+          for (const itemId of sortedIds) {
+            const [item] = await tx
+              .select()
+              .from(schema.inventoryItems)
+              .where(eq(schema.inventoryItems.id, itemId))
+              .for("update")
+              .limit(1);
+            if (!item) {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: "مادة غير موجودة في المخزون",
+              });
+            }
+            locked.set(itemId, { currentQty: item.currentQty, reservedQty: item.reservedQty ?? 0 });
           }
 
-          await tx.insert(schema.inventoryTransactions).values({
-            itemId,
-            type: "adjust",
-            quantity: delta,
-            balanceBefore,
-            balanceAfter,
-            reference: input.sessionRef,
-            note: adj.note ?? null,
-            performedBy: ctx.staff.name,
-            staffUserId: ctx.staff.userId,
-            date: input.date,
-            createdAt: now,
-          });
-          await tx.update(schema.inventoryItems)
-            .set({ currentQty: balanceAfter, updatedAt: now })
-            .where(eq(schema.inventoryItems.id, itemId));
-          count += 1;
-        }
+          const now = Date.now();
+          const plan = await reconcileReservationsAfterStocktake(
+            tx,
+            ctx.staff.userId,
+            new Map(sortedIds.map((id) => [id, byId.get(id)!.actualQty])),
+            now
+          );
+          let count = 0;
+          let unchanged = 0;
+          for (const itemId of sortedIds) {
+            const item = locked.get(itemId)!;
+            const adj = byId.get(itemId)!;
+            const balanceBefore = item.currentQty;
+            const balanceAfter = adj.actualQty;
+            const reservedBefore = item.reservedQty;
+            const reservedAfter = plan.finalReservedByItem.get(itemId) ?? 0;
+            const delta = balanceAfter - balanceBefore;
+            if (delta === 0 && reservedBefore === reservedAfter) {
+              unchanged += 1;
+              continue;
+            }
+            if (delta !== 0) {
+              await tx.insert(schema.inventoryTransactions).values({
+                itemId,
+                type: "adjust",
+                quantity: delta,
+                balanceBefore,
+                balanceAfter,
+                reference: input.sessionRef,
+                note: adj.note ?? null,
+                performedBy: ctx.staff.name,
+                staffUserId: ctx.staff.userId,
+                date: input.date,
+                createdAt: now,
+              });
+              count += 1;
+            } else {
+              unchanged += 1;
+            }
+            await tx.update(schema.inventoryItems)
+              .set({ currentQty: balanceAfter, reservedQty: reservedAfter, updatedAt: now })
+              .where(eq(schema.inventoryItems.id, itemId));
+          }
 
-        return { ok: true, count, unchanged };
-      });
+          return { ok: true, count, unchanged };
+        }));
+      } catch (error) {
+        rethrowInventoryWrite(error);
+      }
     }),
 
   // بذر البيانات التجريبية (للإعداد الأول فقط)

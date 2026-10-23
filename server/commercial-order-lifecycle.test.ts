@@ -13,6 +13,8 @@ type OrderRow = {
   commercialStatus: string | null;
   materialState: string;
   status: string;
+  priorityAt: number | null;
+  reservationAdvancePolicyId: number | null;
 };
 
 const state = vi.hoisted(() => ({
@@ -23,6 +25,7 @@ const state = vi.hoisted(() => ({
   invoiceOrderIds: [] as number[],
   childOrderIds: [] as number[],
   childCanonicalNumbers: [] as string[],
+  reservationOrderIds: [] as number[],
 }));
 
 const { validateStaffSession } = vi.hoisted(() => ({
@@ -54,7 +57,9 @@ function orderTx() {
               ? "door_orders"
               : table === schema.auditEvents
                 ? "audit_events"
-                : "other";
+                : table === schema.reservationLines
+                  ? "reservation_lines"
+                  : "other";
           state.touched.push(`select:${tableName}`);
           return {
             where(clause: unknown) {
@@ -70,8 +75,16 @@ function orderTx() {
                           canonicalNumber: row.canonicalNumber,
                           commercialStatus: row.commercialStatus,
                           materialState: row.materialState,
+                          priorityAt: row.priorityAt,
+                          reservationAdvancePolicyId: row.reservationAdvancePolicyId,
                         },
                       ]
+                    : [];
+                }
+                if (table === schema.reservationLines) {
+                  const orderId = values.find((value) => typeof value === "number");
+                  return typeof orderId === "number" && state.reservationOrderIds.includes(orderId)
+                    ? [{ id: 1 }]
                     : [];
                 }
                 if (table === schema.auditEvents) {
@@ -125,6 +138,9 @@ function orderTx() {
                 row.materialState = String(values.materialState);
               }
               if (values.status !== undefined) row.status = String(values.status);
+              if ("priorityAt" in values) {
+                row.priorityAt = values.priorityAt == null ? null : Number(values.priorityAt);
+              }
             },
           };
         },
@@ -238,6 +254,8 @@ function seed(partial: Partial<OrderRow> = {}) {
     commercialStatus: partial.commercialStatus === undefined ? "draft" : partial.commercialStatus,
     materialState: partial.materialState ?? "not_started",
     status: partial.status ?? "new",
+    priorityAt: partial.priorityAt ?? null,
+    reservationAdvancePolicyId: partial.reservationAdvancePolicyId ?? null,
   });
 }
 
@@ -264,6 +282,7 @@ beforeEach(() => {
   state.invoiceOrderIds = [];
   state.childOrderIds = [];
   state.childCanonicalNumbers = [];
+  state.reservationOrderIds = [];
   validateStaffSession.mockReset();
   sessions.clear();
 });
@@ -489,6 +508,46 @@ describe("approval material invariant and audit idempotency", () => {
       expect(state.orders.get(7)?.materialState).toBe(materialState);
       expect(state.audits).toHaveLength(0);
     }
+  });
+
+  it("stamps priorityAt once and preserves an existing value", async () => {
+    const admin = caller(staff(["admin"], 55));
+    seed({ commercialStatus: "admin_review", priorityAt: null });
+    const before = Date.now();
+    await admin.orders.approve({ orderId: 7 });
+    const after = Date.now();
+    const stamped = state.orders.get(7)?.priorityAt;
+    expect(stamped).toBeGreaterThanOrEqual(before);
+    expect(stamped).toBeLessThanOrEqual(after);
+    await admin.orders.approve({ orderId: 7 });
+    expect(state.orders.get(7)?.priorityAt).toBe(stamped);
+    expect(state.audits).toHaveLength(1);
+
+    seed({ id: 8, commercialStatus: "admin_review", priorityAt: 1_700_000_000_000 });
+    await admin.orders.approve({ orderId: 8 });
+    expect(state.orders.get(8)?.priorityAt).toBe(1_700_000_000_000);
+  });
+
+  it("does not stamp priorityAt on rejection", async () => {
+    seed({ commercialStatus: "admin_review", priorityAt: null });
+    await caller(staff(["admin"])).orders.reject({ orderId: 7 });
+    expect(state.orders.get(7)?.priorityAt).toBeNull();
+    expect(state.orders.get(7)?.commercialStatus).toBe("rejected");
+  });
+
+  it("rejects cancellation after reservation history", async () => {
+    seed({
+      commercialStatus: "approved",
+      materialState: "pending_materials",
+      priorityAt: 50,
+    });
+    state.reservationOrderIds = [7];
+    await expect(caller(staff(["admin"])).orders.cancel({ orderId: 7 })).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+    expect(state.orders.get(7)?.commercialStatus).toBe("approved");
+    expect(state.orders.get(7)?.priorityAt).toBe(50);
+    expect(state.audits).toHaveLength(0);
   });
 
   it("fails closed when the target status has no matching audit", async () => {

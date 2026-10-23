@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../drizzle/schema.js";
+import { orderHasReservationHistory } from "./reservation.js";
 
 /**
  * Commercial transitions lock the existing order first, then append one audit row.
@@ -147,6 +148,8 @@ export async function applyCommercialCommand(
       canonicalNumber: schema.doorOrders.canonicalNumber,
       commercialStatus: schema.doorOrders.commercialStatus,
       materialState: schema.doorOrders.materialState,
+      priorityAt: schema.doorOrders.priorityAt,
+      reservationAdvancePolicyId: schema.doorOrders.reservationAdvancePolicyId,
     })
     .from(schema.doorOrders)
     .where(eq(schema.doorOrders.id, orderId))
@@ -201,14 +204,17 @@ export async function applyCommercialCommand(
       "لا يمكن اعتماد الطلب إلا إذا كانت المواد لم تبدأ"
     );
   }
-  if (
-    command === "cancel" &&
-    BLOCKED_CANCEL_MATERIAL_STATES.some((state) => state === order.materialState)
-  ) {
-    throw new CommercialOrderError(
-      "CONFLICT",
-      "لا يمكن إلغاء الطلب بعد بدء حجز المواد"
-    );
+  if (command === "cancel") {
+    if (
+      BLOCKED_CANCEL_MATERIAL_STATES.some((state) => state === order.materialState) ||
+      order.reservationAdvancePolicyId != null ||
+      (await orderHasReservationHistory(tx, order.id))
+    ) {
+      throw new CommercialOrderError(
+        "CONFLICT",
+        "لا يمكن إلغاء الطلب بعد بدء حجز المواد"
+      );
+    }
   }
 
   const before: CommercialSnapshot = {
@@ -225,6 +231,7 @@ export async function applyCommercialCommand(
     .set({
       commercialStatus: after.commercialStatus,
       materialState: after.materialState,
+      ...(command === "approve" ? { priorityAt: order.priorityAt ?? now } : {}),
       updatedAt: now,
     })
     .where(eq(schema.doorOrders.id, order.id));

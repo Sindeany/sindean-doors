@@ -88,8 +88,16 @@ export const doorOrders = mysqlTable("door_orders", {
    * mode bigint keeps every stored halala exact in JavaScript.
    */
   acceptedTotalMinor: bigint("accepted_total_minor", { mode: "bigint" }),
-  /** Future approval-time priority clock. Same epoch millis as created_at. */
+  /** Approval-time priority clock. Same epoch millis as created_at. */
   priorityAt: bigint("priority_at", { mode: "number" }),
+  /**
+   * Advance policy frozen when Reservation first commits material.
+   * Null until then. Immutable afterwards. Deleting that policy is restricted.
+   */
+  reservationAdvancePolicyId: int("reservation_advance_policy_id").references(
+    () => advancePolicies.id,
+    { onDelete: "restrict" }
+  ),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
 });
@@ -750,6 +758,8 @@ export const inventoryItems = mysqlTable("inventory_items", {
   ]).notNull(),
   unit: varchar("unit", { length: 50 }).notNull(),
   currentQty: int("current_qty").notNull().default(0),
+  /** Cached sum of active reservation_lines. Not consumption. */
+  reservedQty: int("reserved_qty").notNull().default(0),
   minQty: int("min_qty").notNull().default(0),
   maxQty: int("max_qty").notNull().default(0),
   reorderQty: int("reorder_qty").notNull().default(0),
@@ -1512,4 +1522,39 @@ export const bomSnapshotLines = mysqlTable(
 
 export type BomSnapshotLineRow = typeof bomSnapshotLines.$inferSelect;
 export type NewBomSnapshotLine = typeof bomSnapshotLines.$inferInsert;
+
+// One lifecycle row per BOM snapshot line. Active quantity is the commitment.
+// Cancelled rows stay as history. consumed is reserved for Material Release.
+export const reservationLines = mysqlTable(
+  "reservation_lines",
+  {
+    id: int("id").primaryKey().autoincrement(),
+    doorOrderId: int("door_order_id")
+      .notNull()
+      .references(() => doorOrders.id, { onDelete: "restrict" }),
+    bomSnapshotLineId: int("bom_snapshot_line_id")
+      .notNull()
+      .references(() => bomSnapshotLines.id, { onDelete: "restrict" }),
+    inventoryItemId: int("inventory_item_id")
+      .notNull()
+      .references(() => inventoryItems.id, { onDelete: "restrict" }),
+    reservedQty: int("reserved_qty").notNull(),
+    status: mysqlEnum("reservation_line_status", ["active", "cancelled", "consumed"])
+      .notNull()
+      .default("active"),
+    createdByStaffUserId: int("created_by_staff_user_id")
+      .notNull()
+      .references(() => staffUsers.id, { onDelete: "restrict" }),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+    updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+  },
+  (table) => ({
+    snapshotLineUnique: unique("reservation_lines_snapshot_line_uq").on(table.bomSnapshotLineId),
+    itemStatusIdx: index("reservation_lines_item_status_idx").on(table.inventoryItemId, table.status),
+    orderIdx: index("reservation_lines_order_idx").on(table.doorOrderId),
+  })
+);
+
+export type ReservationLine = typeof reservationLines.$inferSelect;
+export type NewReservationLine = typeof reservationLines.$inferInsert;
 
