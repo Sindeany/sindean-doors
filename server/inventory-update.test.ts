@@ -20,27 +20,71 @@ vi.mock("./admin-sessions.js", () => ({
 vi.mock("./db.js", async () => {
   const schema = await import("../drizzle/schema.js");
 
+  function applyUpdate(table: unknown, data: Record<string, unknown>) {
+    return {
+      async where() {
+        if (getTableName(table as never) !== "inventory_items") {
+          throw new Error("unexpected update table");
+        }
+        memory.updates.push({ ...data });
+        const row = memory.items[0];
+        if (row) {
+          for (const [key, val] of Object.entries(data)) {
+            if (key !== "updatedAt") row[key] = val;
+          }
+        }
+      },
+    };
+  }
+
   return {
     schema,
     pool: {},
     db: {
+      async transaction(run: (tx: {
+        select: () => unknown;
+        update: (table: unknown) => { set: (data: Record<string, unknown>) => ReturnType<typeof applyUpdate> };
+      }) => Promise<unknown>) {
+        return run({
+          select() {
+            return {
+              from() {
+                return {
+                  where() {
+                    return {
+                      for() {
+                        return {
+                          async limit() {
+                            const row = memory.items[0];
+                            return row
+                              ? [{
+                                  id: row.id,
+                                  unit: row.unit ?? "لوح",
+                                  currentQty: row.currentQty ?? 0,
+                                  reservedQty: row.reservedQty ?? 0,
+                                }]
+                              : [];
+                          },
+                        };
+                      },
+                      async limit() {
+                        return [];
+                      },
+                    };
+                  },
+                };
+              },
+            };
+          },
+          update(table: unknown) {
+            return { set: (data: Record<string, unknown>) => applyUpdate(table, data) };
+          },
+        });
+      },
       update(table: unknown) {
         return {
           set(data: Record<string, unknown>) {
-            return {
-              async where() {
-                if (getTableName(table as never) !== "inventory_items") {
-                  throw new Error("unexpected update table");
-                }
-                memory.updates.push({ ...data });
-                const row = memory.items.find(i => i.id === data.id) ?? memory.items[0];
-                if (row) {
-                  for (const [key, val] of Object.entries(data)) {
-                    if (key !== "updatedAt") row[key] = val;
-                  }
-                }
-              },
-            };
+            return applyUpdate(table, data);
           },
         };
       },
@@ -79,7 +123,7 @@ function adminCaller() {
 }
 
 beforeEach(() => {
-  memory.items = [{ id: 1, currentQty: 320, minQty: 100, name: "original" }];
+  memory.items = [{ id: 1, currentQty: 320, minQty: 100, name: "original", unit: "لوح" }];
   memory.updates = [];
   memory.inserts = [];
   validateAdminSession.mockReset();

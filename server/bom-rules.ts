@@ -433,11 +433,12 @@ function assertDraft(status: string): void {
 
 async function loadItemUnits(tx: BomTx, itemIds: number[]): Promise<Map<number, string>> {
   const units = new Map<number, string>();
-  for (const itemId of [...new Set(itemIds)]) {
+  for (const itemId of [...new Set(itemIds)].sort((left, right) => left - right)) {
     const [row] = await tx
       .select({ id: schema.inventoryItems.id, unit: schema.inventoryItems.unit })
       .from(schema.inventoryItems)
       .where(eq(schema.inventoryItems.id, itemId))
+      .for("update")
       .limit(1);
     if (!row || row.unit.trim() === "") {
       throw new BomDomainError("CONFLICT", "المادة الخام المطلوبة غير موجودة");

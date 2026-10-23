@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { acceptReviewedUnit, bomLineSubmit, lineUnitIsStale } from "@/lib/legacyBomForm";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,26 +54,25 @@ export function BOMForm({ editBomId, onSuccess, onCancel }: BOMFormProps) {
     { enabled: !!editBomId }
   );
 
-  // ملء الحقول عند التعديل
+  // Capture the unit shown on first load. A later refetch must not rewrite it.
+  const hydratedEdit = useRef(false);
   useEffect(() => {
-    if (existingBOM) {
-      setProductId(existingBOM.productId);
-      setDescription(existingBOM.description || "");
-      setLaborCost(existingBOM.laborCost);
-      setWastagePercentage(existingBOM.wastagePercentage);
-      setNotes(existingBOM.notes || "");
-      
-      const mapped = existingBOM.items.map((item: any) => ({
-        itemId: item.itemId,
-        itemName: item.itemName,
-        itemCode: item.itemCode,
-        unit: item.itemUnit,
-        unitCost: item.unitCost,
-        quantity: item.quantity,
-        notes: item.notes || "",
-      }));
-      setSelectedItems(mapped);
-    }
+    if (!existingBOM || hydratedEdit.current) return;
+    hydratedEdit.current = true;
+    setProductId(existingBOM.productId);
+    setDescription(existingBOM.description || "");
+    setLaborCost(existingBOM.laborCost);
+    setWastagePercentage(existingBOM.wastagePercentage);
+    setNotes(existingBOM.notes || "");
+    setSelectedItems(existingBOM.items.map((item: any) => ({
+      itemId: item.itemId,
+      itemName: item.itemName,
+      itemCode: item.itemCode,
+      unit: item.itemUnit,
+      unitCost: item.unitCost,
+      quantity: item.quantity,
+      notes: item.notes || "",
+    })));
   }, [existingBOM]);
 
   const createMutation = trpc.bom.create.useMutation({
@@ -167,16 +167,20 @@ export function BOMForm({ editBomId, onSuccess, onCancel }: BOMFormProps) {
       return;
     }
 
+    const stale = selectedItems.filter((line) =>
+      lineUnitIsStale(line.unit, inventoryItems.find((item) => item.id === line.itemId)?.unit)
+    );
+    if (stale.length > 0) {
+      toast.error("وحدة المادة تغيرت بعد إدخال الكمية. راجع الكمية وأعد إدخالها");
+      return;
+    }
+
     const payload = {
       description: description || undefined,
       laborCost,
       wastagePercentage,
       notes: notes || undefined,
-      items: selectedItems.map(i => ({
-        itemId: i.itemId,
-        quantity: i.quantity,
-        notes: i.notes || undefined,
-      })),
+      items: bomLineSubmit(selectedItems),
     };
 
     if (editBomId) {
@@ -366,6 +370,24 @@ export function BOMForm({ editBomId, onSuccess, onCancel }: BOMFormProps) {
                         />
                         <span className="text-xs text-gray-400">{item.unit}</span>
                       </div>
+                      {lineUnitIsStale(item.unit, inventoryItems.find((row) => row.id === item.itemId)?.unit) ? (
+                        <div className="mt-1 space-y-1">
+                          <p className="text-xs text-red-600">وحدة المادة تغيرت بعد إدخال الكمية. راجع الكمية وأعد إدخالها.</p>
+                          <button
+                            type="button"
+                            className="text-xs text-emerald-700 underline"
+                            onClick={() => {
+                              const live = inventoryItems.find((row) => row.id === item.itemId);
+                              if (!live) return;
+                              setSelectedItems((lines) => lines.map((line) =>
+                                line.itemId === item.itemId ? acceptReviewedUnit(line, live) : line
+                              ));
+                            }}
+                          >
+                            اعتماد الوحدة الحالية وإعادة إدخال الكمية
+                          </button>
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 font-bold text-gray-900">
                       {(item.unitCost * item.quantity).toFixed(2)} ر.س

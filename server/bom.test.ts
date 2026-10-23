@@ -12,6 +12,7 @@ const createBOMSchema = z.object({
       itemId: z.number().int(),
       quantity: z.number().min(0.001),
       notes: z.string().optional(),
+      expectedUnit: z.string().min(1).max(50),
     })
   ).min(1),
   notes: z.string().optional(),
@@ -28,6 +29,7 @@ const updateBOMSchema = z.object({
       itemId: z.number().int(),
       quantity: z.number().min(0.001),
       notes: z.string().optional(),
+      expectedUnit: z.string().min(1).max(50),
     })
   ).optional(),
   notes: z.string().optional(),
@@ -53,8 +55,8 @@ describe("BOM System validation & Cost logic", () => {
         laborCost: 150,
         wastagePercentage: 5,
         items: [
-          { itemId: 10, quantity: 15, notes: "خشب صنوبر" },
-          { itemId: 12, quantity: 2, notes: "مقابض" },
+          { itemId: 10, quantity: 15, notes: "خشب صنوبر", expectedUnit: "لوح" },
+          { itemId: 12, quantity: 2, notes: "مقابض", expectedUnit: "قطعة" },
         ],
         notes: "ملاحظات عامة",
       };

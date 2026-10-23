@@ -166,12 +166,28 @@ async function inventoryItemHasHistory(tx: InventoryDeleteTx, itemId: number): P
       .from(schema.materialIssueLines)
       .where(eq(schema.materialIssueLines.inventoryItemId, itemId))
       .limit(1),
+    tx
+      .select({ id: schema.bomItems.id })
+      .from(schema.bomItems)
+      .where(eq(schema.bomItems.itemId, itemId))
+      .limit(1),
   ];
   for (const check of checks) {
     const [row] = await check;
     if (row) return true;
   }
   return false;
+}
+
+/** True when a different unit would reinterpret a stored quantity or a frozen record. */
+async function inventoryUnitChangeBlocked(tx: InventoryDeleteTx, itemId: number): Promise<boolean> {
+  if (await inventoryItemHasHistory(tx, itemId)) return true;
+  const [legacyCostLine] = await tx
+    .select({ id: schema.bomItems.id })
+    .from(schema.bomItems)
+    .where(eq(schema.bomItems.itemId, itemId))
+    .limit(1);
+  return Boolean(legacyCostLine);
 }
 
 function calcStatus(qty: number, minQty: number): "in_stock" | "low_stock" | "critical" | "out_of_stock" {
@@ -228,14 +244,41 @@ export const inventoryRouter = router({
       return { id: result.insertId };
     }),
 
-  // تحديث مادة موجودة (لا يغيّر currentQty — الحركات فقط)
+  // تحديث البيانات الوصفية. تغيير الوحدة يُرفض إذا كان سيعيد تفسير رصيد أو سجل.
   update: adminProcedure
     .input(z.object({ id: z.number().int() }).merge(itemUpdateInput))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
-      await db.update(schema.inventoryItems)
-        .set({ ...data, updatedAt: Date.now() })
-        .where(eq(schema.inventoryItems.id, id));
+      await db.transaction(async (tx) => {
+        const [item] = await tx
+          .select({
+            id: schema.inventoryItems.id,
+            unit: schema.inventoryItems.unit,
+            currentQty: schema.inventoryItems.currentQty,
+            reservedQty: schema.inventoryItems.reservedQty,
+          })
+          .from(schema.inventoryItems)
+          .where(eq(schema.inventoryItems.id, id))
+          .for("update")
+          .limit(1);
+        if (!item) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "المادة غير موجودة" });
+        }
+        if (data.unit !== item.unit) {
+          const quantityInterpreted =
+            item.currentQty !== 0 || item.reservedQty !== 0;
+          if (quantityInterpreted || (await inventoryUnitChangeBlocked(tx, item.id))) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "لا يمكن تغيير وحدة حساب مادة لها رصيد أو سجلات",
+            });
+          }
+        }
+        await tx
+          .update(schema.inventoryItems)
+          .set({ ...data, updatedAt: Date.now() })
+          .where(eq(schema.inventoryItems.id, item.id));
+      });
       return { ok: true };
     }),
 

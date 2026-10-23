@@ -5,18 +5,19 @@ import { router, adminProcedure } from "./trpc.js";
 import { TRPCError } from "@trpc/server";
 
 // ── Schemas ──────────────────────────────────────────────────────────
+const bomLineSchema = z.object({
+  itemId: z.number().int(),
+  quantity: z.number().min(0.001),
+  notes: z.string().optional(),
+  expectedUnit: z.string().min(1).max(50),
+});
+
 const createBOMSchema = z.object({
   productId: z.number().int(),
   description: z.string().optional(),
   laborCost: z.number().min(0).default(0),
   wastagePercentage: z.number().min(0).max(100).default(5),
-  items: z.array(
-    z.object({
-      itemId: z.number().int(), // references inventoryItems.id
-      quantity: z.number().min(0.001),
-      notes: z.string().optional(),
-    })
-  ).min(1, "يجب إضافة مادة واحدة على الأقل"),
+  items: z.array(bomLineSchema).min(1, "يجب إضافة مادة واحدة على الأقل"),
   notes: z.string().optional(),
 });
 
@@ -25,116 +26,140 @@ const updateBOMSchema = z.object({
   description: z.string().optional(),
   laborCost: z.number().min(0).optional(),
   wastagePercentage: z.number().min(0).max(100).optional(),
-  items: z.array(
-    z.object({
-      itemId: z.number().int(),
-      quantity: z.number().min(0.001),
-      notes: z.string().optional(),
-    })
-  ).optional(),
+  items: z.array(bomLineSchema).optional(),
   notes: z.string().optional(),
 });
+
+const STALE_CAPTURED_UNIT = "وحدة المادة تغيرت بعد إدخال الكمية. راجع الكمية وأعد إدخالها";
+
+type BomWriteTx = {
+  select: typeof db.select;
+  insert: typeof db.insert;
+  update: typeof db.update;
+  delete: typeof db.delete;
+};
+
+/** Locks inventory rows in ascending id order before any unit-dependent cost is copied. */
+async function lockInventoryForCostSheet(tx: BomWriteTx, itemIds: number[]) {
+  const unique = [...new Set(itemIds)].sort((left, right) => left - right);
+  const locked = new Map<number, { id: number; unit: string; unitCost: number }>();
+  for (const itemId of unique) {
+    const [row] = await tx
+      .select({
+        id: schema.inventoryItems.id,
+        unit: schema.inventoryItems.unit,
+        unitCost: schema.inventoryItems.unitCost,
+      })
+      .from(schema.inventoryItems)
+      .where(eq(schema.inventoryItems.id, itemId))
+      .for("update")
+      .limit(1);
+    if (!row) {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: `المادة الخام ذات المعرف ${itemId} غير موجودة في المخزن`,
+      });
+    }
+    locked.set(row.id, row);
+  }
+  return locked;
+}
+
+function assertCapturedUnits(
+  lines: Array<{ itemId: number; expectedUnit: string }>,
+  locked: Map<number, { unit: string }>
+) {
+  for (const line of lines) {
+    if (locked.get(line.itemId)?.unit !== line.expectedUnit) {
+      throw new TRPCError({ code: "CONFLICT", message: STALE_CAPTURED_UNIT });
+    }
+  }
+}
 
 export const bomRouter = router({
   // ── إنشاء قائمة مواد جديدة ────────────────────────────────
   create: adminProcedure
     .input(createBOMSchema)
     .mutation(async ({ input }) => {
-      // التحقق من وجود المنتج
-      const product = await db.query.products.findFirst({
-        where: eq(schema.products.id, input.productId),
-      });
-      if (!product) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "المنتج المحدد غير موجود في النظام",
-        });
-      }
-
-      // حساب تكاليف البنود والمزامنة مع أسعار المخزن
-      let totalItemsCost = 0;
-      const resolvedItems = [];
-
-      for (let i = 0; i < input.items.length; i++) {
-        const item = input.items[i];
-        const invItem = await db.query.inventoryItems.findFirst({
-          where: eq(schema.inventoryItems.id, item.itemId),
-        });
-
-        if (!invItem) {
+      return db.transaction(async (tx) => {
+        const [product] = await tx
+          .select({ id: schema.products.id })
+          .from(schema.products)
+          .where(eq(schema.products.id, input.productId))
+          .limit(1);
+        if (!product) {
           throw new TRPCError({
             code: "NOT_FOUND",
-            message: `المادة الخام ذات المعرف ${item.itemId} غير موجودة في المخزن`,
+            message: "المنتج المحدد غير موجود في النظام",
           });
         }
 
-        const itemCost = invItem.unitCost * item.quantity;
-        totalItemsCost += itemCost;
-
-        resolvedItems.push({
-          itemId: item.itemId,
-          quantity: item.quantity,
-          unitCost: invItem.unitCost,
-          totalCost: itemCost,
-          notes: item.notes || null,
-          lineNumber: i + 1,
+        const locked = await lockInventoryForCostSheet(
+          tx,
+          input.items.map((item) => item.itemId)
+        );
+        assertCapturedUnits(input.items, locked);
+        let totalItemsCost = 0;
+        const resolvedItems = input.items.map((item, index) => {
+          const invItem = locked.get(item.itemId)!;
+          const itemCost = invItem.unitCost * item.quantity;
+          totalItemsCost += itemCost;
+          return {
+            itemId: item.itemId,
+            quantity: item.quantity,
+            unit: invItem.unit,
+            unitCost: invItem.unitCost,
+            totalCost: itemCost,
+            notes: item.notes || null,
+            lineNumber: index + 1,
+          };
         });
-      }
-
-      // حساب الهدر والتكلفة الكلية
-      const wastageAmount = totalItemsCost * (input.wastagePercentage / 100);
-      const totalCost = totalItemsCost + wastageAmount + input.laborCost;
-
-      const now = Date.now();
-
-      // إدراج رأس الـ BOM
-      const [bomResult] = await db.insert(schema.bom).values({
-        productId: input.productId,
-        version: 1,
-        description: input.description || null,
-        totalCost,
-        laborCost: input.laborCost,
-        wastagePercentage: input.wastagePercentage,
-        status: "draft",
-        createdBy: 1, // معرف افتراضي للأدمن
-        notes: input.notes || null,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      const bomId = bomResult.insertId;
-
-      // إدراج بنود الـ BOM
-      for (const item of resolvedItems) {
-        await db.insert(schema.bomItems).values({
-          bomId,
-          itemId: item.itemId,
-          quantity: item.quantity,
-          unitCost: item.unitCost,
-          totalCost: item.totalCost,
-          notes: item.notes,
-          lineNumber: item.lineNumber,
+        const wastageAmount = totalItemsCost * (input.wastagePercentage / 100);
+        const totalCost = totalItemsCost + wastageAmount + input.laborCost;
+        const now = Date.now();
+        const [bomResult] = await tx.insert(schema.bom).values({
+          productId: input.productId,
+          version: 1,
+          description: input.description || null,
+          totalCost,
+          laborCost: input.laborCost,
+          wastagePercentage: input.wastagePercentage,
+          status: "draft",
+          createdBy: 1,
+          notes: input.notes || null,
           createdAt: now,
           updatedAt: now,
         });
-      }
-
-      // تسجيل السجل التاريخي
-      await db.insert(schema.bomHistory).values({
-        bomId,
-        changeType: "created",
-        changedBy: 1,
-        newData: {
-          productId: input.productId,
-          laborCost: input.laborCost,
-          wastagePercentage: input.wastagePercentage,
-          totalCost,
-          itemsCount: resolvedItems.length,
-        },
-        changedAt: now,
+        const bomId = bomResult.insertId;
+        for (const item of resolvedItems) {
+          await tx.insert(schema.bomItems).values({
+            bomId,
+            itemId: item.itemId,
+            quantity: item.quantity,
+            unitCost: item.unitCost,
+            totalCost: item.totalCost,
+            notes: item.notes,
+            lineNumber: item.lineNumber,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+        await tx.insert(schema.bomHistory).values({
+          bomId,
+          changeType: "created",
+          changedBy: 1,
+          newData: {
+            productId: input.productId,
+            laborCost: input.laborCost,
+            wastagePercentage: input.wastagePercentage,
+            totalCost,
+            itemsCount: resolvedItems.length,
+            units: resolvedItems.map((item) => item.unit),
+          },
+          changedAt: now,
+        });
+        return { bomId, totalCost };
       });
-
-      return { bomId, totalCost };
     }),
 
   // ── جلب كل قوائم المواد ────────────────────────────────────
@@ -247,111 +272,90 @@ export const bomRouter = router({
   update: adminProcedure
     .input(updateBOMSchema)
     .mutation(async ({ input }) => {
-      const current = await db.query.bom.findFirst({
-        where: eq(schema.bom.id, input.bomId),
-      });
-
-      if (!current) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "قائمة المواد المطلوبة غير موجودة",
-        });
-      }
-
-      const now = Date.now();
-      const updateData: any = {
-        updatedAt: now,
-      };
-
-      if (input.description !== undefined) updateData.description = input.description;
-      if (input.notes !== undefined) updateData.notes = input.notes;
-      if (input.laborCost !== undefined) updateData.laborCost = input.laborCost;
-      if (input.wastagePercentage !== undefined) updateData.wastagePercentage = input.wastagePercentage;
-
-      const laborCost = input.laborCost !== undefined ? input.laborCost : current.laborCost;
-      const wastagePercentage = input.wastagePercentage !== undefined ? input.wastagePercentage : current.wastagePercentage;
-
-      // إذا تم تحديث بنود قائمة المواد
-      if (input.items !== undefined) {
-        // حذف البنود القديمة
-        await db.delete(schema.bomItems).where(eq(schema.bomItems.bomId, input.bomId));
-
-        let totalItemsCost = 0;
-        const resolvedItems = [];
-
-        for (let i = 0; i < input.items.length; i++) {
-          const item = input.items[i];
-          const invItem = await db.query.inventoryItems.findFirst({
-            where: eq(schema.inventoryItems.id, item.itemId),
+      await db.transaction(async (tx) => {
+        const [current] = await tx
+          .select()
+          .from(schema.bom)
+          .where(eq(schema.bom.id, input.bomId))
+          .for("update")
+          .limit(1);
+        if (!current) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "قائمة المواد المطلوبة غير موجودة",
           });
+        }
 
-          if (!invItem) {
-            throw new TRPCError({
-              code: "NOT_FOUND",
-              message: `المادة ذات المعرف ${item.itemId} غير موجودة بالمخزن`,
+        const now = Date.now();
+        const updateData: Record<string, unknown> = { updatedAt: now };
+        if (input.description !== undefined) updateData.description = input.description;
+        if (input.notes !== undefined) updateData.notes = input.notes;
+        if (input.laborCost !== undefined) updateData.laborCost = input.laborCost;
+        if (input.wastagePercentage !== undefined) updateData.wastagePercentage = input.wastagePercentage;
+        const laborCost = input.laborCost !== undefined ? input.laborCost : current.laborCost;
+        const wastagePercentage =
+          input.wastagePercentage !== undefined ? input.wastagePercentage : current.wastagePercentage;
+
+        if (input.items !== undefined) {
+          const existing = await tx
+            .select({ itemId: schema.bomItems.itemId })
+            .from(schema.bomItems)
+            .where(eq(schema.bomItems.bomId, current.id));
+          const locked = await lockInventoryForCostSheet(tx, [
+            ...existing.map((row) => row.itemId),
+            ...input.items.map((item) => item.itemId),
+          ]);
+          assertCapturedUnits(input.items, locked);
+          let totalItemsCost = 0;
+          const resolvedItems = input.items.map((item, index) => {
+            const invItem = locked.get(item.itemId)!;
+            const itemCost = invItem.unitCost * item.quantity;
+            totalItemsCost += itemCost;
+            return {
+              itemId: item.itemId,
+              quantity: item.quantity,
+              unitCost: invItem.unitCost,
+              totalCost: itemCost,
+              notes: item.notes || null,
+              lineNumber: index + 1,
+            };
+          });
+          const wastageAmount = totalItemsCost * (wastagePercentage / 100);
+          updateData.totalCost = totalItemsCost + wastageAmount + laborCost;
+          await tx.delete(schema.bomItems).where(eq(schema.bomItems.bomId, current.id));
+          for (const item of resolvedItems) {
+            await tx.insert(schema.bomItems).values({
+              bomId: current.id,
+              itemId: item.itemId,
+              quantity: item.quantity,
+              unitCost: item.unitCost,
+              totalCost: item.totalCost,
+              notes: item.notes,
+              lineNumber: item.lineNumber,
+              createdAt: now,
+              updatedAt: now,
             });
           }
-
-          const itemCost = invItem.unitCost * item.quantity;
-          totalItemsCost += itemCost;
-
-          resolvedItems.push({
-            itemId: item.itemId,
-            quantity: item.quantity,
-            unitCost: invItem.unitCost,
-            totalCost: itemCost,
-            notes: item.notes || null,
-            lineNumber: i + 1,
-          });
+        } else if (input.laborCost !== undefined || input.wastagePercentage !== undefined) {
+          const currentItems = await tx
+            .select({ totalCost: schema.bomItems.totalCost })
+            .from(schema.bomItems)
+            .where(eq(schema.bomItems.bomId, current.id));
+          const totalItemsCost = currentItems.reduce((sum, item) => sum + item.totalCost, 0);
+          const wastageAmount = totalItemsCost * (wastagePercentage / 100);
+          updateData.totalCost = totalItemsCost + wastageAmount + laborCost;
         }
 
-        const wastageAmount = totalItemsCost * (wastagePercentage / 100);
-        const totalCost = totalItemsCost + wastageAmount + laborCost;
-
-        updateData.totalCost = totalCost;
-
-        // إدراج البنود الجديدة
-        for (const item of resolvedItems) {
-          await db.insert(schema.bomItems).values({
-            bomId: input.bomId,
-            itemId: item.itemId,
-            quantity: item.quantity,
-            unitCost: item.unitCost,
-            totalCost: item.totalCost,
-            notes: item.notes,
-            lineNumber: item.lineNumber,
-            createdAt: now,
-            updatedAt: now,
-          });
-        }
-      } else if (input.laborCost !== undefined || input.wastagePercentage !== undefined) {
-        // في حال تغيير التكلفة أو نسبة الهدر فقط، نعيد حساب الإجمالي بناءً على البنود الحالية
-        const currentItems = await db
-          .select({ totalCost: schema.bomItems.totalCost })
-          .from(schema.bomItems)
-          .where(eq(schema.bomItems.bomId, input.bomId));
-
-        const totalItemsCost = currentItems.reduce((sum, item) => sum + item.totalCost, 0);
-        const wastageAmount = totalItemsCost * (wastagePercentage / 100);
-        updateData.totalCost = totalItemsCost + wastageAmount + laborCost;
-      }
-
-      // تحديث رأس الـ BOM
-      await db
-        .update(schema.bom)
-        .set(updateData)
-        .where(eq(schema.bom.id, input.bomId));
-
-      // تسجيل السجل التاريخي
-      await db.insert(schema.bomHistory).values({
-        bomId: input.bomId,
-        changeType: "updated",
-        changedBy: 1,
-        oldData: current,
-        newData: updateData,
-        changedAt: now,
+        await tx.update(schema.bom).set(updateData).where(eq(schema.bom.id, current.id));
+        await tx.insert(schema.bomHistory).values({
+          bomId: current.id,
+          changeType: "updated",
+          changedBy: 1,
+          oldData: current,
+          newData: updateData,
+          changedAt: now,
+        });
       });
-
       return { success: true };
     }),
 

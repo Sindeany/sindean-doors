@@ -17,6 +17,7 @@ const { validateAdminSession, memory } = vi.hoisted(() => ({
       snapshot: false,
       reservation: false,
       issue: false,
+      legacyBom: false,
     },
     deletes: [] as string[],
     locks: [] as string[],
@@ -41,6 +42,7 @@ vi.mock("./db.js", async () => {
     if (tableName === "bom_snapshot_lines") return memory.refs.snapshot ? [{ id: 1 }] : [];
     if (tableName === "reservation_lines") return memory.refs.reservation ? [{ id: 1 }] : [];
     if (tableName === "material_issue_lines") return memory.refs.issue ? [{ id: 1 }] : [];
+    if (tableName === "bom_items") return memory.refs.legacyBom ? [{ id: 1 }] : [];
     throw new Error("unexpected select " + tableName);
   }
 
@@ -141,7 +143,7 @@ function fkError(): Error {
 beforeEach(() => {
   memory.item = { id: 7, currentQty: 0, reservedQty: 0 };
   memory.txs = [];
-  memory.refs = { bom: false, snapshot: false, reservation: false, issue: false };
+  memory.refs = { bom: false, snapshot: false, reservation: false, issue: false, legacyBom: false };
   memory.deletes = [];
   memory.locks = [];
   memory.transactions = 0;
@@ -175,6 +177,14 @@ describe("inventory.delete ledger preservation", () => {
     await expect(caller().delete({ id: 7 })).rejects.toMatchObject({ code: "CONFLICT" });
     expect(memory.item).toEqual({ id: 7, currentQty: 10, reservedQty: 4 });
     expect(memory.deletes).toEqual([]);
+  });
+
+  it("rejects deletion when only a legacy cost-sheet line references the item", async () => {
+    memory.refs.legacyBom = true;
+    await expect(caller().delete({ id: 7 })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(memory.item).toEqual({ id: 7, currentQty: 0, reservedQty: 0 });
+    expect(memory.deletes).not.toContain("inventory_items");
+    expect(memory.deletes).not.toContain("bom_items");
   });
 
   it("deletes an unused zero-balance item and does not touch the ledger", async () => {
