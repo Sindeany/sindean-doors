@@ -95,6 +95,85 @@ function rethrowInventoryWrite(error: unknown): never {
   throw error;
 }
 
+const INVENTORY_DELETE_BLOCKED = "لا يمكن حذف مادة مرتبطة بسجلات أخرى";
+
+/**
+ * Delete-path mapping stays separate from stock-movement errors.
+ * A ledger SIGNAL must not be reported as a reservation shortfall.
+ */
+function inventoryDeleteError(error: unknown): TRPCError | null {
+  if (error instanceof TRPCError) return error;
+  for (const part of databaseErrorParts(error)) {
+    if (
+      part.errno === 1451 ||
+      part.errno === 1217 ||
+      part.code === "ER_ROW_IS_REFERENCED_2" ||
+      part.code === "ER_ROW_IS_REFERENCED"
+    ) {
+      return new TRPCError({ code: "CONFLICT", message: INVENTORY_DELETE_BLOCKED });
+    }
+    if (
+      part.errno === 1644 ||
+      part.sqlState === "45000" ||
+      part.code === "ER_SIGNAL_EXCEPTION"
+    ) {
+      return new TRPCError({
+        code: "CONFLICT",
+        message: "لا يمكن حذف سجل حركات المخزون",
+      });
+    }
+    if (
+      part.errno === 1205 ||
+      part.errno === 1213 ||
+      part.code === "ER_LOCK_WAIT_TIMEOUT" ||
+      part.code === "ER_LOCK_DEADLOCK"
+    ) {
+      return new TRPCError({ code: "CONFLICT", message: "تعارض في تحديث المخزون" });
+    }
+  }
+  return null;
+}
+
+type InventoryDeleteTx = {
+  select: typeof db.select;
+};
+
+/** Non-locking reads. The item row lock serializes balance and movement writers. */
+async function inventoryItemHasHistory(tx: InventoryDeleteTx, itemId: number): Promise<boolean> {
+  const checks = [
+    tx
+      .select({ id: schema.inventoryTransactions.id })
+      .from(schema.inventoryTransactions)
+      .where(eq(schema.inventoryTransactions.itemId, itemId))
+      .limit(1),
+    tx
+      .select({ id: schema.bomRules.id })
+      .from(schema.bomRules)
+      .where(eq(schema.bomRules.inventoryItemId, itemId))
+      .limit(1),
+    tx
+      .select({ id: schema.bomSnapshotLines.id })
+      .from(schema.bomSnapshotLines)
+      .where(eq(schema.bomSnapshotLines.inventoryItemId, itemId))
+      .limit(1),
+    tx
+      .select({ id: schema.reservationLines.id })
+      .from(schema.reservationLines)
+      .where(eq(schema.reservationLines.inventoryItemId, itemId))
+      .limit(1),
+    tx
+      .select({ id: schema.materialIssueLines.id })
+      .from(schema.materialIssueLines)
+      .where(eq(schema.materialIssueLines.inventoryItemId, itemId))
+      .limit(1),
+  ];
+  for (const check of checks) {
+    const [row] = await check;
+    if (row) return true;
+  }
+  return false;
+}
+
 function calcStatus(qty: number, minQty: number): "in_stock" | "low_stock" | "critical" | "out_of_stock" {
   if (qty <= 0) return "out_of_stock";
   if (qty <= minQty * 0.5) return "critical";
@@ -160,24 +239,40 @@ export const inventoryRouter = router({
       return { ok: true };
     }),
 
-  // حذف مادة
+  // حذف مادة غير مستخدمة. سجل الحركات لا يُحذف أبداً.
+  // Lock only inventory_items. Receipt, consumption, stocktake, reservation,
+  // and Material Release take that same row lock before they write, so this
+  // check cannot race those writers. Child reads stay non-locking; a later FK
+  // failure rolls the item delete back.
   delete: adminProcedure
     .input(z.object({ id: z.number().int() }))
     .mutation(async ({ input }) => {
       try {
-        await db.delete(schema.inventoryTransactions)
-          .where(eq(schema.inventoryTransactions.itemId, input.id));
-        await db.delete(schema.inventoryItems)
-          .where(eq(schema.inventoryItems.id, input.id));
-      } catch (error) {
-        for (const part of databaseErrorParts(error)) {
-          if (part.errno === 1451 || part.errno === 1217 || part.code === "ER_ROW_IS_REFERENCED_2" || part.code === "ER_ROW_IS_REFERENCED") {
-            throw new TRPCError({
-              code: "CONFLICT",
-              message: "لا يمكن حذف مادة مرتبطة بسجلات أخرى",
-            });
+        await db.transaction(async (tx) => {
+          const [item] = await tx
+            .select({
+              id: schema.inventoryItems.id,
+              currentQty: schema.inventoryItems.currentQty,
+              reservedQty: schema.inventoryItems.reservedQty,
+            })
+            .from(schema.inventoryItems)
+            .where(eq(schema.inventoryItems.id, input.id))
+            .for("update")
+            .limit(1);
+          if (!item) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "المادة غير موجودة" });
           }
-        }
+          if (item.currentQty !== 0 || item.reservedQty !== 0) {
+            throw new TRPCError({ code: "CONFLICT", message: INVENTORY_DELETE_BLOCKED });
+          }
+          if (await inventoryItemHasHistory(tx, item.id)) {
+            throw new TRPCError({ code: "CONFLICT", message: INVENTORY_DELETE_BLOCKED });
+          }
+          await tx.delete(schema.inventoryItems).where(eq(schema.inventoryItems.id, item.id));
+        });
+      } catch (error) {
+        const mapped = inventoryDeleteError(error);
+        if (mapped) throw mapped;
         throw error;
       }
       return { ok: true };

@@ -64,6 +64,13 @@
       "when": 1792723992965,
       "tag": "0008_material_release",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1792810000000,
+      "tag": "0009_inventory_ledger_immutable",
+      "breakpoints": true
     }
   ]
 }
