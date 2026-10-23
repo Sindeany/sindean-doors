@@ -375,10 +375,10 @@ export default function CustomerPortal() {
                   <Package className="w-8 h-8 text-stone-400" />
                 </div>
                 <h3 className="font-bold text-gray-700 mb-2">
-                  لا توجد طلبات بعد
+                  عرض الطلبات غير متاح من الحساب
                 </h3>
                 <p className="text-sm text-gray-400 mb-6">
-                  ابدأ بتصفح منتجاتنا وتقديم طلبك الأول
+                  يظهر الطلب هنا بعد أن يربطه المصنع بحساب موثّق. تصفح المنتجات متاح.
                 </p>
                 <Button
                   className="bg-amber-700 hover:bg-amber-800 text-white rounded-xl"
@@ -575,7 +575,7 @@ export default function CustomerPortal() {
               </div>
               {orders.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-4">
-                  لا توجد طلبات مسجلة
+                  عرض الطلبات والفواتير غير متاح من الحساب إلى أن يربط المصنع الطلب بحساب موثّق
                 </p>
               ) : (
                 <div className="grid gap-2">
@@ -620,13 +620,13 @@ export default function CustomerPortal() {
                   <div className="bg-white rounded-2xl border border-stone-100 p-10 text-center shadow-sm">
                     <RefreshCw className="w-6 h-6 animate-spin text-amber-600 mx-auto" />
                   </div>
-                ) : invoice === null || invoice === undefined ? (
+                ) : invoiceQ.isError || invoice === null || invoice === undefined ? (
                   <div className="bg-white rounded-2xl border border-stone-100 p-10 text-center shadow-sm">
                     <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
                       <FileText className="w-7 h-7 text-amber-400" />
                     </div>
                     <h3 className="font-bold text-gray-700 mb-1">
-                      لا توجد فاتورة بعد
+                      {invoiceQ.isError ? "عرض الفاتورة غير متاح من الحساب" : "لا توجد فاتورة بعد"}
                     </h3>
                     <p className="text-sm text-gray-400">
                       يتم إصدار الفاتورة الضريبية تلقائياً بعد تأكيد الطلب
@@ -950,7 +950,7 @@ export default function CustomerPortal() {
                 <div className="bg-white rounded-2xl border border-stone-100 p-10 text-center shadow-sm">
                   <CheckCircle2 className="w-10 h-10 text-green-400 mx-auto mb-3" />
                   <p className="text-sm text-gray-500">
-                    لا توجد شكاوى مسجلة — شكراً على ثقتك بنا!
+                    سجل الشكاوى السابقة غير متاح من الحساب حالياً. يمكنك تقديم شكوى جديدة.
                   </p>
                 </div>
               ) : (

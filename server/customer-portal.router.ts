@@ -5,7 +5,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 import { db, schema } from "./db.js";
-import { eq, desc, and, gt } from "drizzle-orm";
+import { eq, and, gt } from "drizzle-orm";
 import { t, publicProcedure, router } from "./trpc.js";
 
 // ── User session middleware (mirrors users.router.ts) ────────────────────────
@@ -46,87 +46,58 @@ const complaintTypeEnum = z.enum([
   "other",
 ]);
 
+/**
+ * door_orders has no customer user id, and registration does not prove
+ * control of an email address. Email equality is not ownership.
+ * Order, invoice, and complaint reads stay closed until a later verified link.
+ */
+const CUSTOMER_RECORD_FORBIDDEN = "غير مصرح";
+
+type CustomerOrderRow = typeof schema.doorOrders.$inferSelect;
+type CustomerComplaintRow = typeof schema.complaints.$inferSelect & {
+  messages: Array<typeof schema.complaintMessages.$inferSelect>;
+};
+type CustomerInvoiceRow = {
+  id: number;
+  invoiceNumber: string;
+  issueDate: string;
+  issueTime: string;
+  buyerName: string;
+  buyerPhone: string | null;
+  sellerName: string;
+  sellerVatNumber: string;
+  lineItems: unknown;
+  subtotalHalala: number;
+  vatAmountHalala: number;
+  totalHalala: number;
+  vatRate: number;
+  qrCodeData: string | null;
+  invoiceHash: string | null;
+  status: string;
+  zatcaStatus: string | null;
+};
+
+function customerRecordsClosed(): never {
+  throw new TRPCError({ code: "FORBIDDEN", message: CUSTOMER_RECORD_FORBIDDEN });
+}
+
 // ── Router ───────────────────────────────────────────────────────────────────
 export const customerPortalRouter = router({
-  // ── طلباتي — قائمة الطلبات المرتبطة بالبريد الإلكتروني ─────────────────
-  myOrders: userProcedure.query(async ({ ctx }) => {
-    const user = (ctx as any).user;
-    if (!user.email) return [];
-
-    const orders = await db.query.doorOrders.findMany({
-      where: eq(schema.doorOrders.customerEmail, user.email),
-      orderBy: [desc(schema.doorOrders.createdAt)],
-    });
-    return orders;
+  // No verified account-to-order link exists. Do not match customer_email.
+  myOrders: userProcedure.query(async (): Promise<CustomerOrderRow[]> => {
+    return [];
   }),
 
-  // ── الفاتورة الضريبية لطلب معين ─────────────────────────────────────────
+  // Same refusal for every id. The body does not say whether an order exists.
   orderInvoice: userProcedure
     .input(z.object({ orderId: z.number().int().positive() }))
-    .query(async ({ ctx, input }) => {
-      const user = (ctx as any).user;
-
-      // تحقق: الطلب يخص هذا المستخدم
-      const order = await db.query.doorOrders.findFirst({
-        where: and(
-          eq(schema.doorOrders.id, input.orderId),
-          eq(schema.doorOrders.customerEmail, user.email)
-        ),
-      });
-      if (!order)
-        throw new TRPCError({ code: "NOT_FOUND", message: "الطلب غير موجود" });
-
-      // ابحث عن الفاتورة المرتبطة بهذا الطلب
-      const invoice = await db.query.taxInvoices.findFirst({
-        where: and(
-          eq(schema.taxInvoices.sourceType, "door_order"),
-          eq(schema.taxInvoices.sourceId, input.orderId)
-        ),
-      });
-
-      if (!invoice) return null;
-
-      // إرجاع البيانات الآمنة للعميل (بدون الـ XML الكامل)
-      return {
-        id: invoice.id,
-        invoiceNumber: invoice.invoiceNumber,
-        issueDate: invoice.issueDate,
-        issueTime: invoice.issueTime,
-        buyerName: invoice.buyerName,
-        buyerPhone: invoice.buyerPhone,
-        sellerName: invoice.sellerName,
-        sellerVatNumber: invoice.sellerVatNumber,
-        lineItems: invoice.lineItems,
-        subtotalHalala: invoice.subtotalHalala,
-        vatAmountHalala: invoice.vatAmountHalala,
-        totalHalala: invoice.totalHalala,
-        vatRate: invoice.vatRate,
-        qrCodeData: invoice.qrCodeData,
-        invoiceHash: invoice.invoiceHash,
-        status: invoice.status,
-        zatcaStatus: invoice.zatcaStatus,
-      };
+    .query(async (): Promise<CustomerInvoiceRow | null> => {
+      customerRecordsClosed();
     }),
 
-  // ── شكاواي — قائمة الشكاوى المسجلة بنفس البريد الإلكتروني ──────────────
-  myComplaints: userProcedure.query(async ({ ctx }) => {
-    const user = (ctx as any).user;
-
-    // نبحث بالبريد الإلكتروني في companyName (مؤقتاً) أو باسم الموزع
-    // الشكاوى مرتبطة بالبريد عبر حقل distributorName = email كـ fallback
-    const complaints = await db.query.complaints.findMany({
-      where: eq(schema.complaints.distributorName, user.email),
-      orderBy: [desc(schema.complaints.createdAt)],
-    });
-
-    const messages = await db.query.complaintMessages.findMany({
-      orderBy: [desc(schema.complaintMessages.createdAt)],
-    });
-
-    return complaints.map(c => ({
-      ...c,
-      messages: messages.filter(m => m.complaintId === c.id),
-    }));
+  // Complaints are stored against an email string, not a user id.
+  myComplaints: userProcedure.query(async (): Promise<CustomerComplaintRow[]> => {
+    return [];
   }),
 
   // ── تقديم شكوى جديدة ────────────────────────────────────────────────────

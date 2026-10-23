@@ -409,7 +409,9 @@ export default function UserOrders() {
           <div className="text-center py-16">
             <Package className="w-12 h-12 mx-auto mb-3" style={{ color: "#C8D5D0" }} />
             <p className="text-base font-semibold" style={{ color: "#6B7B75" }}>
-              {dir === "rtl" ? "لا توجد طلبات" : "No orders found"}
+              {dir === "rtl"
+                ? "عرض الطلبات غير متاح من الحساب إلى أن يربط المصنع الطلب بحساب موثّق"
+                : "Order viewing is unavailable until the factory links an order to this account"}
             </p>
           </div>
         ) : (
