@@ -380,7 +380,8 @@ export const inventoryRouter = router({
       }
     }),
 
-  // خصم تلقائي عند إنشاء أمر تشغيل
+  // Retired. Physical issue for a canonical order is materialRelease.release.
+  // The procedure remains so existing clients keep a typed error instead of a missing route.
   consumeForWorkOrder: adminProcedure
     .input(z.object({
       workOrderRef: z.string(),
@@ -390,86 +391,11 @@ export const inventoryRouter = router({
         quantity: z.number().int(),
       })),
     }))
-    .mutation(async ({ input }) => {
-      for (const consumption of input.consumptions) {
-        if (!Number.isInteger(consumption.quantity) || consumption.quantity <= 0) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "الكمية يجب أن تكون أكبر من صفر",
-          });
-        }
-      }
-      const today = new Date().toISOString().split("T")[0];
-      const warnings: string[] = [];
-      const sortedIds = [...new Set(input.consumptions.map((row) => row.itemId))].sort((a, b) => a - b);
-
-      try {
-        await db.transaction(async (tx) => {
-          const locked = new Map<number, {
-            id: number;
-            name: string;
-            unit: string;
-            currentQty: number;
-            reservedQty: number;
-          }>();
-          for (const itemId of sortedIds) {
-            const [item] = await tx
-              .select()
-              .from(schema.inventoryItems)
-              .where(eq(schema.inventoryItems.id, itemId))
-              .for("update")
-              .limit(1);
-            if (!item) continue;
-            locked.set(itemId, {
-              id: item.id,
-              name: item.name,
-              unit: item.unit,
-              currentQty: item.currentQty,
-              reservedQty: item.reservedQty ?? 0,
-            });
-          }
-
-          for (const consumption of input.consumptions) {
-            const item = locked.get(consumption.itemId);
-            if (!item) {
-              warnings.push(`مادة رقم ${consumption.itemId} غير موجودة`);
-              continue;
-            }
-            const candidateCurrent = item.currentQty - consumption.quantity;
-            if (candidateCurrent < 0) {
-              throw new TRPCError({
-                code: "CONFLICT",
-                message: "الكمية المتاحة في المخزون غير كافية",
-              });
-            }
-            if (candidateCurrent < item.reservedQty) {
-              throw new TRPCError({
-                code: "CONFLICT",
-                message: "لا يمكن إنقاص المخزون إلى أقل من الكمية المحجوزة",
-              });
-            }
-            const now = Date.now();
-            await tx.insert(schema.inventoryTransactions).values({
-              itemId: item.id,
-              type: "consume",
-              quantity: consumption.quantity,
-              balanceBefore: item.currentQty,
-              balanceAfter: candidateCurrent,
-              reference: input.workOrderRef,
-              performedBy: input.performedBy,
-              date: today,
-              createdAt: now,
-            });
-            await tx.update(schema.inventoryItems)
-              .set({ currentQty: candidateCurrent, lastConsumed: today, updatedAt: now })
-              .where(eq(schema.inventoryItems.id, item.id));
-            item.currentQty = candidateCurrent;
-          }
-        });
-      } catch (error) {
-        rethrowInventoryWrite(error);
-      }
-      return { ok: true, warnings };
+    .mutation(() => {
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "خصم المخزون عبر أمر التشغيل لم يعد متاحاً",
+      });
     }),
 
   // اعتماد الجرد: stock_manager فقط، دفعة واحدة داخل معاملة مع قفل الصفوف.

@@ -78,6 +78,34 @@ async function notifyOwner(title: string, content: string): Promise<void> {
 // الـ instance المشترك مُعرَّف في trpc.ts
 
 // ── Orders Router ────────────────────────────────────────────────────────────
+const LEGACY_MANAGED_ORDER = "لا يمكن تعديل طلب على دورة الاعتماد التجارية";
+
+type LegacyOrderTx = {
+  select: typeof db.select;
+  update: typeof db.update;
+};
+
+/** Locks the order, then refuses every row already on the commercial machine. */
+async function lockLegacyOnlyOrder(tx: LegacyOrderTx, orderId: number) {
+  const [order] = await tx
+    .select({
+      id: schema.doorOrders.id,
+      commercialStatus: schema.doorOrders.commercialStatus,
+      notes: schema.doorOrders.notes,
+    })
+    .from(schema.doorOrders)
+    .where(eq(schema.doorOrders.id, orderId))
+    .for("update")
+    .limit(1);
+  if (!order) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "الطلب غير موجود" });
+  }
+  if (order.commercialStatus != null) {
+    throw new TRPCError({ code: "CONFLICT", message: LEGACY_MANAGED_ORDER });
+  }
+  return order;
+}
+
 function getStatusForStage(stage: string): "confirmed" | "manufacturing" | "shipped" | "delivered" {
   switch (stage) {
     case "po_review":
@@ -531,65 +559,50 @@ const ordersRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      await db
-        .update(schema.doorOrders)
-        .set({
-          workflowStage: input.workflowStage,
-          ...(input.workflowStagesData !== undefined && {
-            workflowStagesData: input.workflowStagesData,
-          }),
-          ...(input.priority !== undefined && { priority: input.priority }),
-          ...(input.expectedDelivery !== undefined && {
-            expectedDelivery: input.expectedDelivery,
-          }),
-          ...(input.totalDoors !== undefined && {
-            totalDoors: input.totalDoors,
-          }),
-          updatedAt: Date.now(),
-        })
-        .where(eq(schema.doorOrders.id, input.id));
+      await db.transaction(async (tx) => {
+        const order = await lockLegacyOnlyOrder(tx, input.id);
+        const now = Date.now();
+        await tx
+          .update(schema.doorOrders)
+          .set({
+            workflowStage: input.workflowStage,
+            ...(input.workflowStagesData !== undefined && {
+              workflowStagesData: input.workflowStagesData,
+            }),
+            ...(input.priority !== undefined && { priority: input.priority }),
+            ...(input.expectedDelivery !== undefined && {
+              expectedDelivery: input.expectedDelivery,
+            }),
+            ...(input.totalDoors !== undefined && {
+              totalDoors: input.totalDoors,
+            }),
+            updatedAt: now,
+          })
+          .where(eq(schema.doorOrders.id, order.id));
 
-      // Sync distributor order status if applicable
-      const doorOrder = await db.query.doorOrders.findFirst({
-        where: eq(schema.doorOrders.id, input.id),
-      });
-
-      if (doorOrder && doorOrder.notes && doorOrder.notes.startsWith("DIST_ORDER_ID:")) {
-        const prefix = doorOrder.notes.split(" - ")[0]; // "DIST_ORDER_ID:12"
-        const distOrderIdStr = prefix.replace("DIST_ORDER_ID:", "");
-        const distOrderId = parseInt(distOrderIdStr, 10);
-        if (!isNaN(distOrderId)) {
-          // Fetch all items linked to this distributor order
-          const linkedOrders = await db.query.doorOrders.findMany({
-            where: like(schema.doorOrders.notes, `DIST_ORDER_ID:${distOrderId}%`),
-          });
-
-          if (linkedOrders.length > 0) {
-            const itemStatuses = linkedOrders.map(o => getStatusForStage(o.workflowStage || "po_review"));
-            
-            let parentStatus: "confirmed" | "manufacturing" | "shipped" | "delivered" = "confirmed";
-            const allDelivered = itemStatuses.every(s => s === "delivered");
-            const allShippedOrDelivered = itemStatuses.every(s => s === "shipped" || s === "delivered");
-            const anyMfgOrHigher = itemStatuses.some(s => s === "manufacturing" || s === "shipped" || s === "delivered");
-
-            if (allDelivered) {
-              parentStatus = "delivered";
-            } else if (allShippedOrDelivered) {
-              parentStatus = "shipped";
-            } else if (anyMfgOrHigher) {
-              parentStatus = "manufacturing";
-            } else {
-              parentStatus = "confirmed";
-            }
-
-            await db
-              .update(schema.distributorOrders)
-              .set({ status: parentStatus, updatedAt: Date.now() })
-              .where(eq(schema.distributorOrders.id, distOrderId));
-          }
+        if (!order.notes?.startsWith("DIST_ORDER_ID:")) return;
+        const distOrderId = parseInt(order.notes.split(" - ")[0].replace("DIST_ORDER_ID:", ""), 10);
+        if (!Number.isInteger(distOrderId)) return;
+        const linkedOrders = await tx
+          .select({ workflowStage: schema.doorOrders.workflowStage })
+          .from(schema.doorOrders)
+          .where(like(schema.doorOrders.notes, `DIST_ORDER_ID:${distOrderId}%`));
+        if (linkedOrders.length === 0) return;
+        const itemStatuses = linkedOrders.map((row) =>
+          getStatusForStage(row.workflowStage || "po_review")
+        );
+        let parentStatus: "confirmed" | "manufacturing" | "shipped" | "delivered" = "confirmed";
+        if (itemStatuses.every((status) => status === "delivered")) parentStatus = "delivered";
+        else if (itemStatuses.every((status) => status === "shipped" || status === "delivered")) {
+          parentStatus = "shipped";
+        } else if (itemStatuses.some((status) => status === "manufacturing" || status === "shipped" || status === "delivered")) {
+          parentStatus = "manufacturing";
         }
-      }
-
+        await tx
+          .update(schema.distributorOrders)
+          .set({ status: parentStatus, updatedAt: now })
+          .where(eq(schema.distributorOrders.id, distOrderId));
+      });
       return { success: true };
     }),
 
@@ -604,10 +617,13 @@ const ordersRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      await db
-        .update(schema.doorOrders)
-        .set({ paymentStatus: input.paymentStatus, updatedAt: Date.now() })
-        .where(eq(schema.doorOrders.id, input.id));
+      await db.transaction(async (tx) => {
+        const order = await lockLegacyOnlyOrder(tx, input.id);
+        await tx
+          .update(schema.doorOrders)
+          .set({ paymentStatus: input.paymentStatus, updatedAt: Date.now() })
+          .where(eq(schema.doorOrders.id, order.id));
+      });
       return { success: true };
     }),
 

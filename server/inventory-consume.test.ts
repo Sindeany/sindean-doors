@@ -1,5 +1,5 @@
 /**
- * consumeForWorkOrder locks the item row and refuses to pass reserved_qty.
+ * consumeForWorkOrder is retired. It must not read or write inventory.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -132,50 +132,68 @@ beforeEach(() => {
 });
 
 describe("inventory.consumeForWorkOrder", () => {
-  it("locks rows and rejects a balance below the reservation", async () => {
+  it("rejects a legacy admin before any inventory read or write", async () => {
     await expect(
       caller().consumeForWorkOrder({
         workOrderRef: "WO-1",
+        performedBy: "مدير قديم",
         consumptions: [
           { itemId: 5, quantity: 1 },
           { itemId: 2, quantity: 3 },
         ],
       })
-    ).rejects.toMatchObject({ code: "CONFLICT" });
-    expect(memory.forUpdate).toEqual(["update", "update"]);
-    expect(memory.lockOrder).toEqual([2, 5]);
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: "خصم المخزون عبر أمر التشغيل لم يعد متاحاً",
+    });
+    expect(memory.forUpdate).toEqual([]);
+    expect(memory.txs).toEqual([]);
+    expect(memory.updates).toEqual([]);
     expect(memory.items.find((item) => item.id === 2)?.currentQty).toBe(10);
+    expect(memory.items.find((item) => item.id === 2)?.reservedQty).toBe(8);
     expect(memory.items.find((item) => item.id === 5)?.currentQty).toBe(4);
-    expect(memory.txs).toHaveLength(0);
   });
 
-  it("consumes inside the transaction and rolls back a failed update", async () => {
-    memory.items = [{ id: 2, name: "لوح", unit: "لوح", currentQty: 10, reservedQty: 0 }];
-    const result = await caller().consumeForWorkOrder({
-      workOrderRef: "WO-2",
-      performedBy: "نظام أوامر التشغيل",
-      consumptions: [{ itemId: 2, quantity: 4 }],
-    });
-    expect(result.warnings).toEqual([]);
-    expect(memory.txs[0]).toMatchObject({
-      type: "consume",
-      quantity: 4,
-      balanceBefore: 10,
-      balanceAfter: 6,
-      performedBy: "نظام أوامر التشغيل",
-    });
-    expect(memory.txs[0]).not.toHaveProperty("staffUserId");
-    expect(memory.items[0]?.currentQty).toBe(6);
-
-    memory.failUpdate = true;
-    memory.txs = [];
+  it("rejects a stock manager and a mixed missing-item batch without partial consumption", async () => {
     await expect(
-      caller().consumeForWorkOrder({
-        workOrderRef: "WO-3",
-        consumptions: [{ itemId: 2, quantity: 1 }],
+      inventoryRouter.createCaller({
+        adminToken: "admin-session",
+        staffToken: "stock-session",
+      }).consumeForWorkOrder({
+        workOrderRef: "WO-2",
+        consumptions: [
+          { itemId: 5, quantity: 1 },
+          { itemId: 99, quantity: 4 },
+        ],
       })
     ).rejects.toMatchObject({ code: "CONFLICT" });
-    expect(memory.items[0]?.currentQty).toBe(6);
-    expect(memory.txs).toHaveLength(0);
+    await expect(
+      inventoryRouter.createCaller({ staffToken: "stock-session" }).consumeForWorkOrder({
+        workOrderRef: "WO-3",
+        consumptions: [{ itemId: 5, quantity: 1 }],
+      })
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    expect(memory.txs).toEqual([]);
+    expect(memory.updates).toEqual([]);
+    expect(memory.items.find((item) => item.id === 5)?.currentQty).toBe(4);
+  });
+
+  it("keeps material release on the stock manager and leaves ordinary stock routes in place", async () => {
+    const release = await import("node:fs").then((fs) =>
+      fs.readFileSync("server/material-release.router.ts", "utf8")
+    );
+    const inventory = await import("node:fs").then((fs) =>
+      fs.readFileSync("server/inventory.router.ts", "utf8")
+    );
+    expect(release).toContain('requireStaffRole("stock_manager")');
+    expect(release).toContain("releaseMaterials");
+    expect(inventory).toContain('addTransaction: requireStaffRole("stock_manager")');
+    expect(inventory).toContain('bulkAdjustForStocktaking: requireStaffRole("stock_manager")');
+    const consume = inventory.slice(
+      inventory.indexOf("consumeForWorkOrder:"),
+      inventory.indexOf("bulkAdjustForStocktaking:")
+    );
+    expect(consume).not.toContain("inventoryTransactions");
+    expect(consume).not.toContain("currentQty");
   });
 });

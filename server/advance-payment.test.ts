@@ -1024,7 +1024,7 @@ describe("advance payment regression", () => {
   });
 
   it("does not treat the legacy payment label as money or as the accepted total", async () => {
-    seed();
+    seed({ commercialStatus: null, canonicalNumber: null });
     await expect(
       appRouter.createCaller({ adminToken: "legacy-admin" }).orders.updatePaymentStatus({
         id: 7,
