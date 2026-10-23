@@ -50,6 +50,7 @@ import { bomRouter } from "./bom.router.js";
 import { bomRulesRouter } from "./bom-rules.router.js";
 import { advanceRouter } from "./advance-payment.router.js";
 import { reservationRouter } from "./reservation.router.js";
+import { materialReleaseRouter } from "./material-release.router.js";
 import { CanonicalSequenceExhaustedError } from "./canonical-order-number.js";
 import { insertCanonicalFactoryOrder } from "./factory-order-create.js";
 
@@ -752,6 +753,7 @@ export const appRouter = router({
   bomRules: bomRulesRouter,
   advance: advanceRouter,
   reservation: reservationRouter,
+  materialRelease: materialReleaseRouter,
   orders: ordersRouter,
   suppliers: suppliersRouter,
   rfq: rfqRouter,

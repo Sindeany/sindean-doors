@@ -616,6 +616,10 @@ describe("legacy status and hard delete", () => {
       expect(state.orders.has(7)).toBe(true);
     }
 
+    seed({ commercialStatus: "approved", materialState: "released" });
+    await expect(admin.orders.delete({ id: 7 })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(state.orders.get(7)?.materialState).toBe("released");
+
     seed();
     state.childOrderIds = [7];
     await expect(admin.orders.delete({ id: 7 })).rejects.toMatchObject({ code: "CONFLICT" });

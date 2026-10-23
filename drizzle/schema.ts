@@ -13,6 +13,7 @@ import {
   timestamp,
   index,
   unique,
+  foreignKey,
 } from "drizzle-orm/mysql-core";
 
 // ── Door Orders ──────────────────────────────────────────────────────────────
@@ -1557,4 +1558,123 @@ export const reservationLines = mysqlTable(
 
 export type ReservationLine = typeof reservationLines.$inferSelect;
 export type NewReservationLine = typeof reservationLines.$inferInsert;
+
+// One completed Material Release per order. Historical; application flow does not update it.
+export const materialReleases = mysqlTable(
+  "material_releases",
+  {
+    id: int("id").primaryKey().autoincrement(),
+    doorOrderId: int("door_order_id").notNull(),
+    bomSnapshotId: int("bom_snapshot_id").notNull(),
+    advancePolicyId: int("advance_policy_id").notNull(),
+    idempotencyKey: varchar("idempotency_key", { length: 64 }).notNull(),
+    releasedByStaffUserId: int("released_by_staff_user_id").notNull(),
+    releasedAt: bigint("released_at", { mode: "number" }).notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  },
+  (table) => ({
+    doorOrderUnique: unique("material_releases_door_order_uq").on(table.doorOrderId),
+    idempotencyUnique: unique("material_releases_idempotency_uq").on(table.idempotencyKey),
+    doorOrderFk: foreignKey({
+      name: "mr_door_order_fk",
+      columns: [table.doorOrderId],
+      foreignColumns: [doorOrders.id],
+    }).onDelete("restrict"),
+    snapshotFk: foreignKey({
+      name: "mr_snapshot_fk",
+      columns: [table.bomSnapshotId],
+      foreignColumns: [bomSnapshots.id],
+    }).onDelete("restrict"),
+    policyFk: foreignKey({
+      name: "mr_advance_policy_fk",
+      columns: [table.advancePolicyId],
+      foreignColumns: [advancePolicies.id],
+    }).onDelete("restrict"),
+    releasedByFk: foreignKey({
+      name: "mr_released_by_fk",
+      columns: [table.releasedByStaffUserId],
+      foreignColumns: [staffUsers.id],
+    }).onDelete("restrict"),
+  })
+);
+
+export type MaterialReleaseRow = typeof materialReleases.$inferSelect;
+export type NewMaterialRelease = typeof materialReleases.$inferInsert;
+
+// V1 physical issue header. Exactly one issue per Material Release.
+export const materialIssues = mysqlTable(
+  "material_issues",
+  {
+    id: int("id").primaryKey().autoincrement(),
+    materialReleaseId: int("material_release_id").notNull(),
+    issuedByStaffUserId: int("issued_by_staff_user_id").notNull(),
+    issuedAt: bigint("issued_at", { mode: "number" }).notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  },
+  (table) => ({
+    releaseUnique: unique("material_issues_release_uq").on(table.materialReleaseId),
+    releaseFk: foreignKey({
+      name: "mi_release_fk",
+      columns: [table.materialReleaseId],
+      foreignColumns: [materialReleases.id],
+    }).onDelete("restrict"),
+    issuedByFk: foreignKey({
+      name: "mi_issued_by_fk",
+      columns: [table.issuedByStaffUserId],
+      foreignColumns: [staffUsers.id],
+    }).onDelete("restrict"),
+  })
+);
+
+export type MaterialIssueRow = typeof materialIssues.$inferSelect;
+export type NewMaterialIssue = typeof materialIssues.$inferInsert;
+
+// One traceable issue line per consumed reservation row and inventory transaction.
+export const materialIssueLines = mysqlTable(
+  "material_issue_lines",
+  {
+    id: int("id").primaryKey().autoincrement(),
+    materialIssueId: int("material_issue_id").notNull(),
+    reservationLineId: int("reservation_line_id").notNull(),
+    bomSnapshotLineId: int("bom_snapshot_line_id").notNull(),
+    inventoryItemId: int("inventory_item_id").notNull(),
+    issuedQty: int("issued_qty").notNull(),
+    unit: varchar("unit", { length: 50 }).notNull(),
+    inventoryTransactionId: int("inventory_transaction_id").notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  },
+  (table) => ({
+    reservationUnique: unique("material_issue_lines_reservation_uq").on(table.reservationLineId),
+    transactionUnique: unique("material_issue_lines_transaction_uq").on(table.inventoryTransactionId),
+    issueIdx: index("material_issue_lines_issue_idx").on(table.materialIssueId),
+    issueFk: foreignKey({
+      name: "mil_issue_fk",
+      columns: [table.materialIssueId],
+      foreignColumns: [materialIssues.id],
+    }).onDelete("restrict"),
+    reservationFk: foreignKey({
+      name: "mil_reservation_fk",
+      columns: [table.reservationLineId],
+      foreignColumns: [reservationLines.id],
+    }).onDelete("restrict"),
+    snapshotLineFk: foreignKey({
+      name: "mil_snapshot_line_fk",
+      columns: [table.bomSnapshotLineId],
+      foreignColumns: [bomSnapshotLines.id],
+    }).onDelete("restrict"),
+    itemFk: foreignKey({
+      name: "mil_item_fk",
+      columns: [table.inventoryItemId],
+      foreignColumns: [inventoryItems.id],
+    }).onDelete("restrict"),
+    transactionFk: foreignKey({
+      name: "mil_transaction_fk",
+      columns: [table.inventoryTransactionId],
+      foreignColumns: [inventoryTransactions.id],
+    }).onDelete("restrict"),
+  })
+);
+
+export type MaterialIssueLineRow = typeof materialIssueLines.$inferSelect;
+export type NewMaterialIssueLine = typeof materialIssueLines.$inferInsert;
 

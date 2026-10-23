@@ -334,7 +334,8 @@ async function historyExists(
     | typeof schema.qcInspections
     | typeof schema.distributorPayments
     | typeof schema.packingOrders
-    | typeof schema.complaints,
+    | typeof schema.complaints
+    | typeof schema.materialReleases,
   where: ReturnType<typeof and>
 ): Promise<boolean> {
   const [row] = await tx
@@ -394,6 +395,11 @@ export async function deleteDoorOrderIfEligible(
         tx,
         schema.workOrders,
         and(eq(schema.workOrders.orderId, order.id))
+      ),
+      await historyExists(
+        tx,
+        schema.materialReleases,
+        eq(schema.materialReleases.doorOrderId, order.id)
       ),
       await historyExists(
         tx,
